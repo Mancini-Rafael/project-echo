@@ -1,0 +1,14 @@
+[openai]
+model = "gpt-4o-transcribe"
+
+[transcription]
+vocabulary_prompt = """
+TypeScript, Python, Postgres, Kubernetes, Docker, Rails, Django, Flask,
+React, Next.js, Tailwind, npm, pnpm, uv, async, await, webhook, OAuth,
+Vulcan, Tarifei, Comex Radar, Rafael Mancini
+"""
+language = "en"
+
+[recording]
+sample_rate = 16000
+channels = 1

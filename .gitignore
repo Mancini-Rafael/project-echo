@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+dist/
+build/
+
+# Env
+.env
+
+# Config (gitignored except the example)
+config/*
+!config/config.example.toml
+
+# OS
+.DS_Store
