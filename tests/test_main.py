@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -91,3 +92,88 @@ def test_main_clean_flag_not_implemented(mocker, fake_config: Config) -> None:
     mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
 
     assert main_mod.main(argv=["--clean"]) != 0
+
+
+# ----- subcommand dispatch -----
+
+def test_main_listen_constructs_and_runs_daemon(mocker, fake_config: Config) -> None:
+    from echo import __main__ as main_mod
+
+    mocker.patch.object(main_mod, "load_config", return_value=fake_config)
+    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
+
+    fake_daemon = MagicMock()
+    fake_daemon.run.return_value = 0
+    mocker.patch.object(main_mod, "Daemon", return_value=fake_daemon)
+
+    # Stub out PID file lifecycle so we don't touch /tmp.
+    mocker.patch.object(main_mod, "_acquire_pid_file")
+    mocker.patch.object(main_mod, "_release_pid_file")
+
+    exit_code = main_mod.main(argv=["listen"])
+    assert exit_code == 0
+    fake_daemon.run.assert_called_once()
+
+
+def test_main_stop_with_no_pid_file(mocker, tmp_path: Path) -> None:
+    from echo import __main__ as main_mod
+
+    mocker.patch.object(main_mod, "PID_FILE", tmp_path / "echo-daemon.pid")
+    exit_code = main_mod.main(argv=["stop"])
+    assert exit_code == 0
+
+
+def test_main_stop_sends_sigterm_when_alive(mocker, tmp_path: Path) -> None:
+    from echo import __main__ as main_mod
+
+    pid_file = tmp_path / "echo-daemon.pid"
+    pid_file.write_text("12345")
+    mocker.patch.object(main_mod, "PID_FILE", pid_file)
+    kill = mocker.patch.object(main_mod.os, "kill")
+    # First call: SIGTERM. Second call: poll alive. Third call: poll dead.
+    kill.side_effect = [None, None, ProcessLookupError]
+    exit_code = main_mod.main(argv=["stop"])
+    assert exit_code == 0
+    # SIGTERM was sent first.
+    assert kill.call_args_list[0][0][1] == 15  # signal.SIGTERM
+
+
+def test_main_listen_refuses_when_pid_file_exists_and_alive(
+    mocker, tmp_path: Path, fake_config: Config
+) -> None:
+    from echo import __main__ as main_mod
+
+    pid_file = tmp_path / "echo-daemon.pid"
+    pid_file.write_text("12345")
+    mocker.patch.object(main_mod, "PID_FILE", pid_file)
+    mocker.patch.object(main_mod, "load_config", return_value=fake_config)
+    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
+    mocker.patch.object(main_mod.os, "kill", return_value=None)  # process is "alive"
+
+    exit_code = main_mod.main(argv=["listen"])
+    assert exit_code == 1
+
+
+def test_main_listen_cleans_stale_pid_file(
+    mocker, tmp_path: Path, fake_config: Config
+) -> None:
+    from echo import __main__ as main_mod
+
+    pid_file = tmp_path / "echo-daemon.pid"
+    pid_file.write_text("12345")
+    mocker.patch.object(main_mod, "PID_FILE", pid_file)
+    mocker.patch.object(main_mod, "load_config", return_value=fake_config)
+    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
+    mocker.patch.object(main_mod.os, "kill", side_effect=ProcessLookupError)
+
+    fake_daemon = MagicMock()
+    fake_daemon.run.return_value = 0
+    mocker.patch.object(main_mod, "Daemon", return_value=fake_daemon)
+
+    exit_code = main_mod.main(argv=["listen"])
+    assert exit_code == 0
+    # The PID file should have been cleaned up at end (released).
+    assert not pid_file.exists()

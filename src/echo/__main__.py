@@ -1,8 +1,10 @@
-"""Entry point for the `ec` command."""
+"""Entry point for the `ec` command — supports one-shot, daemon, and stop modes."""
 from __future__ import annotations
 
 import argparse
+import os
 import select
+import signal
 import sys
 import termios
 import time
@@ -13,6 +15,7 @@ from openai import OpenAI
 
 from echo.clipboard import ClipboardError, copy_to_clipboard
 from echo.config import Config, ConfigError, load_config
+from echo.daemon import Daemon
 from echo.recorder import RecorderError, RecordingSession
 from echo.transcriber import TranscriberError, transcribe
 from echo.ui import format_error, format_recording_line, format_transcription
@@ -22,24 +25,84 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "config.toml"
 EXAMPLE_PATH = REPO_ROOT / "config" / "config.example.toml"
 
+# Module-level so tests can monkeypatch.
+PID_FILE = Path("/tmp/echo-daemon.pid")
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
+
+# ===== argparse =====
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ec",
         description="Record audio, transcribe via OpenAI, copy to clipboard.",
     )
-    parser.add_argument(
-        "--clean",
-        action="store_true",
-        help="(reserved) post-process the transcription via an LLM cleanup pass",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="print per-stage timing breakdown to stderr",
-    )
-    return parser.parse_args(argv)
+    sub = parser.add_subparsers(dest="command")
 
+    # Default (no subcommand): one-shot recording. Flags live on the root parser.
+    parser.add_argument("--clean", action="store_true",
+                        help="(reserved) post-process the transcription via an LLM cleanup pass")
+    parser.add_argument("--verbose", action="store_true",
+                        help="print per-stage timing breakdown to stderr")
+
+    listen_p = sub.add_parser("listen", help="Run the global hotkey daemon")
+    listen_p.add_argument("--verbose", action="store_true",
+                          help="print per-recording timing breakdown")
+    listen_p.add_argument("--force", action="store_true",
+                          help="overwrite an existing PID file (kills the previous claim)")
+
+    sub.add_parser("stop", help="Stop a running daemon")
+
+    return parser
+
+
+# ===== PID file helpers =====
+
+def _is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _acquire_pid_file(force: bool) -> None:
+    if PID_FILE.exists():
+        try:
+            existing = int(PID_FILE.read_text().strip())
+        except ValueError:
+            existing = -1
+        if existing > 0 and _is_alive(existing):
+            if not force:
+                raise ConfigError(
+                    f"daemon already running (PID {existing}). "
+                    "Run 'ec stop' first, or pass --force to override."
+                )
+            sys.stderr.write(
+                f"warning: --force specified; overwriting PID file for live PID {existing}\n"
+            )
+        else:
+            sys.stderr.write(
+                f"warning: stale PID file at {PID_FILE} (PID {existing} not alive); cleaning up\n"
+            )
+    PID_FILE.write_text(str(os.getpid()))
+
+
+def _release_pid_file() -> None:
+    try:
+        if PID_FILE.exists():
+            try:
+                pid = int(PID_FILE.read_text().strip())
+            except ValueError:
+                pid = -1
+            if pid == os.getpid():
+                PID_FILE.unlink()
+    except OSError:
+        pass
+
+
+# ===== one-shot recording (existing behavior) =====
 
 def _print_status(line: str) -> None:
     sys.stderr.write(f"\r{line}")
@@ -47,11 +110,6 @@ def _print_status(line: str) -> None:
 
 
 def _wait_for_space(session: RecordingSession) -> None:
-    """Block until the user presses space, ticking a status line.
-
-    Puts the terminal in cbreak mode so a single character is read without
-    waiting for newline. Restores the terminal on exit.
-    """
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     start = time.monotonic()
@@ -72,9 +130,7 @@ def _wait_for_space(session: RecordingSession) -> None:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv if argv is not None else sys.argv[1:])
-
+def _run_oneshot(args: argparse.Namespace) -> int:
     if args.clean:
         sys.stderr.write(format_error("--clean is not implemented in the MVP") + "\n")
         return 2
@@ -161,6 +217,96 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     return 0
+
+
+# ===== ec listen =====
+
+def _run_listen(args: argparse.Namespace) -> int:
+    try:
+        cfg = load_config(CONFIG_PATH, example_path=EXAMPLE_PATH)
+        api_key = Config.require_api_key()
+    except ConfigError as e:
+        sys.stderr.write(format_error(str(e)) + "\n")
+        return 1
+
+    try:
+        _acquire_pid_file(force=args.force)
+    except ConfigError as e:
+        sys.stderr.write(format_error(str(e)) + "\n")
+        return 1
+
+    try:
+        client = OpenAI(api_key=api_key)
+        daemon = Daemon(config=cfg, openai_client=client)
+        return daemon.run()
+    finally:
+        _release_pid_file()
+
+
+# ===== ec stop =====
+
+def _run_stop() -> int:
+    if not PID_FILE.exists():
+        sys.stderr.write("no daemon running\n")
+        return 0
+    try:
+        pid = int(PID_FILE.read_text().strip())
+    except ValueError:
+        sys.stderr.write("warning: PID file is corrupt; removing\n")
+        try:
+            PID_FILE.unlink()
+        except OSError:
+            pass
+        return 0
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        sys.stderr.write("warning: PID file pointed to a dead process; cleaning up\n")
+        try:
+            PID_FILE.unlink()
+        except OSError:
+            pass
+        return 0
+
+    # Poll for up to 2 seconds.
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            try:
+                PID_FILE.unlink()
+            except OSError:
+                pass
+            sys.stderr.write("daemon stopped\n")
+            return 0
+        time.sleep(0.1)
+
+    # Still alive — escalate.
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        PID_FILE.unlink()
+    except OSError:
+        pass
+    sys.stderr.write("daemon stopped (SIGKILL)\n")
+    return 0
+
+
+# ===== entry point =====
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+
+    if args.command == "listen":
+        return _run_listen(args)
+    if args.command == "stop":
+        return _run_stop()
+    return _run_oneshot(args)
 
 
 if __name__ == "__main__":
