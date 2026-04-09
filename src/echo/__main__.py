@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import select
 import sys
+import termios
 import time
+import tty
 from pathlib import Path
 
 from openai import OpenAI
 
 from echo.clipboard import ClipboardError, copy_to_clipboard
 from echo.config import Config, ConfigError, load_config
-from echo.recorder import RecorderError, record_until_space
+from echo.recorder import RecorderError, RecordingSession
 from echo.transcriber import TranscriberError, transcribe
 from echo.ui import format_error, format_recording_line, format_transcription
 
@@ -43,6 +46,32 @@ def _print_status(line: str) -> None:
     sys.stderr.flush()
 
 
+def _wait_for_space(session: RecordingSession) -> None:
+    """Block until the user presses space, ticking a status line.
+
+    Puts the terminal in cbreak mode so a single character is read without
+    waiting for newline. Restores the terminal on exit.
+    """
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    start = time.monotonic()
+    last_tick = -1
+    try:
+        tty.setcbreak(fd)
+        while session.is_recording:
+            elapsed = int(time.monotonic() - start)
+            if elapsed != last_tick:
+                _print_status(format_recording_line(elapsed))
+                last_tick = elapsed
+            r, _, _ = select.select([sys.stdin], [], [], 0.05)
+            if r:
+                ch = sys.stdin.read(1)
+                if ch == " ":
+                    return
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
 
@@ -59,22 +88,30 @@ def main(argv: list[str] | None = None) -> int:
 
     timings: dict[str, float] = {}
     wav_path = Path(f"/tmp/echo-{int(time.time())}.wav")
+    session = RecordingSession(sample_rate=cfg.sample_rate, channels=cfg.channels)
 
     try:
         t0 = time.monotonic()
-        recording = record_until_space(
-            output_path=wav_path,
-            sample_rate=cfg.sample_rate,
-            channels=cfg.channels,
-            on_tick=lambda elapsed: _print_status(format_recording_line(elapsed)),
-        )
+        try:
+            session.start()
+        except RecorderError as e:
+            sys.stderr.write(format_error(str(e)) + "\n")
+            return 1
+        _wait_for_space(session)
+        try:
+            recording = session.stop(wav_path)
+        except RecorderError as e:
+            sys.stderr.write("\n" + format_error(str(e)) + "\n")
+            return 1
         sys.stderr.write("\n")
         timings["record"] = time.monotonic() - t0
-    except RecorderError as e:
-        sys.stderr.write("\n" + format_error(str(e)) + "\n")
-        return 1
     except KeyboardInterrupt:
         sys.stderr.write("\n")
+        if session.is_recording:
+            try:
+                session.stop(wav_path)
+            except RecorderError:
+                pass
         if wav_path.exists():
             wav_path.unlink(missing_ok=True)
         return 130
@@ -112,7 +149,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("✓ Copied to clipboard.\n")
     except ClipboardError as e:
         sys.stderr.write(format_error(f"{e} (transcription printed above)") + "\n")
-        # Don't delete WAV in this case; user may want to retry.
         return 1
 
     wav_path.unlink(missing_ok=True)
