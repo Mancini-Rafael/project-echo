@@ -263,6 +263,13 @@ A few notes if you're sending a pull request:
 - [ ] Benchmark latency and accuracy against the OpenAI default
 - [ ] Optional offline mode (no network calls at all)
 
+### Distribution — next
+
+- [ ] One-liner install script (`curl | sh` or `brew install`)
+- [ ] Auto-install system deps (portaudio, uv) with platform detection
+- [ ] First-run wizard: create config, prompt for API key, grant permissions
+- [ ] Homebrew formula or tap for native `ec` binary installation
+
 ### Quality of life — later
 
 - [ ] LaunchAgent for auto-start on login
