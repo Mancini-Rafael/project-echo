@@ -82,9 +82,8 @@ Now press **⌃⌥⌘** (Control + Option + Command) anywhere on the system to
 toggle a recording. You'll hear a beep on start and a different beep on stop.
 The transcription lands on your clipboard ~1s after you press the chord
 again. Configure the chord and sound files in `config/config.toml` under
-`[hotkey]` and `[hotkey.sounds]`. Supported modifier names are `control`,
-`option`, `command`, and `shift` (the cross-platform aliases `ctrl`, `alt`,
-`cmd` also work).
+`[hotkey]` and `[hotkey.sounds]`. Supported modifier names: `control`,
+`option`, `command`, `shift`.
 
 To stop the daemon from any other terminal:
 

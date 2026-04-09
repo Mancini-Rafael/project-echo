@@ -16,7 +16,7 @@ def fake_config() -> Config:
         sample_rate=16000,
         channels=1,
         hotkey=HotkeyConfig(
-            chord=("ctrl", "alt", "cmd"),
+            chord=("control", "option", "command"),
             sound_start="",
             sound_stop="",
             sound_empty="",

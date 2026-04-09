@@ -83,29 +83,29 @@ def test_hotkey_config_defaults_when_section_missing(tmp_path: Path) -> None:
     assert cfg.hotkey.sound_empty == "/System/Library/Sounds/Funk.aiff"
 
 
-def test_hotkey_config_accepts_legacy_aliases(tmp_path: Path) -> None:
-    """Old chord names (ctrl/alt/cmd) must still parse — backwards compatible."""
+def test_hotkey_config_rejects_legacy_aliases(tmp_path: Path) -> None:
+    """Old short names (ctrl/alt/cmd) are no longer supported."""
     section = '[hotkey]\nchord = ["ctrl", "alt", "cmd"]\n'
     cfg_path = _write_config_with_hotkey(tmp_path, section)
-    cfg = load_config(cfg_path)
-    assert cfg.hotkey.chord == ("ctrl", "alt", "cmd")
+    with pytest.raises(ConfigError, match="Unknown hotkey key"):
+        load_config(cfg_path)
 
 
 def test_hotkey_config_parses_custom_section(tmp_path: Path) -> None:
     section = (
-        '[hotkey]\nchord = ["ctrl", "shift", "f1"]\n'
+        '[hotkey]\nchord = ["control", "shift", "f1"]\n'
         '[hotkey.sounds]\nstart = "/tmp/a"\nstop = "/tmp/b"\nempty = ""\n'
     )
     cfg_path = _write_config_with_hotkey(tmp_path, section)
     cfg = load_config(cfg_path)
-    assert cfg.hotkey.chord == ("ctrl", "shift", "f1")
+    assert cfg.hotkey.chord == ("control", "shift", "f1")
     assert cfg.hotkey.sound_start == "/tmp/a"
     assert cfg.hotkey.sound_stop == "/tmp/b"
     assert cfg.hotkey.sound_empty == ""
 
 
 def test_hotkey_config_unknown_key_raises(tmp_path: Path) -> None:
-    section = '[hotkey]\nchord = ["ctrl", "wat"]\n'
+    section = '[hotkey]\nchord = ["control", "wat"]\n'
     cfg_path = _write_config_with_hotkey(tmp_path, section)
     with pytest.raises(ConfigError, match="Unknown hotkey key"):
         load_config(cfg_path)

@@ -8,7 +8,7 @@ from echo.hotkey import ChordDetector, parse_chord
 # ----- parse_chord -----
 
 def test_parse_chord_modifiers() -> None:
-    slots = parse_chord(["ctrl", "alt", "cmd"])
+    slots = parse_chord(["control", "option", "command"])
     # Each slot is a frozenset; modifier slots include both L and R variants.
     assert len(slots) == 3
     assert Key.ctrl_l in slots[0] and Key.ctrl_r in slots[0]
@@ -16,11 +16,11 @@ def test_parse_chord_modifiers() -> None:
     assert Key.cmd_l in slots[2] and Key.cmd_r in slots[2]
 
 
-def test_parse_chord_mac_native_modifier_names() -> None:
-    """control/option/command must produce the same slots as ctrl/alt/cmd."""
-    legacy = parse_chord(["ctrl", "alt", "cmd"])
-    native = parse_chord(["control", "option", "command"])
-    assert legacy == native
+def test_parse_chord_legacy_aliases_rejected() -> None:
+    """ctrl/alt/cmd are no longer accepted — only Mac-native names."""
+    for legacy in ("ctrl", "alt", "cmd"):
+        with pytest.raises(ConfigError, match="Unknown hotkey key"):
+            parse_chord([legacy])
 
 
 def test_parse_chord_named_keys() -> None:
@@ -30,13 +30,13 @@ def test_parse_chord_named_keys() -> None:
 
 
 def test_parse_chord_letter() -> None:
-    slots = parse_chord(["ctrl", "a"])
+    slots = parse_chord(["control", "a"])
     assert KeyCode.from_char("a") in slots[1]
 
 
 def test_parse_chord_unknown_key_raises() -> None:
     with pytest.raises(ConfigError, match="Unknown hotkey key"):
-        parse_chord(["ctrl", "wat"])
+        parse_chord(["control", "wat"])
 
 
 def test_parse_chord_empty_raises() -> None:
@@ -47,7 +47,7 @@ def test_parse_chord_empty_raises() -> None:
 # ----- ChordDetector -----
 
 def _make_detector():
-    slots = parse_chord(["ctrl", "alt", "cmd"])
+    slots = parse_chord(["control", "option", "command"])
     fired = []
     detector = ChordDetector(slots=slots, on_pressed=lambda: fired.append(1))
     return detector, fired
