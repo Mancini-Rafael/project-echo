@@ -16,6 +16,13 @@ def test_parse_chord_modifiers() -> None:
     assert Key.cmd_l in slots[2] and Key.cmd_r in slots[2]
 
 
+def test_parse_chord_mac_native_modifier_names() -> None:
+    """control/option/command must produce the same slots as ctrl/alt/cmd."""
+    legacy = parse_chord(["ctrl", "alt", "cmd"])
+    native = parse_chord(["control", "option", "command"])
+    assert legacy == native
+
+
 def test_parse_chord_named_keys() -> None:
     slots = parse_chord(["space", "f1"])
     assert Key.space in slots[0]

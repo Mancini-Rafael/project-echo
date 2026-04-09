@@ -16,7 +16,7 @@ class ConfigError(Exception):
     """Raised when configuration cannot be loaded or is invalid."""
 
 
-_DEFAULT_HOTKEY_CHORD: tuple[str, ...] = ("ctrl", "alt", "cmd")
+_DEFAULT_HOTKEY_CHORD: tuple[str, ...] = ("control", "option", "command")
 _DEFAULT_SOUND_START = "/System/Library/Sounds/Pop.aiff"
 _DEFAULT_SOUND_STOP = "/System/Library/Sounds/Tink.aiff"
 _DEFAULT_SOUND_EMPTY = "/System/Library/Sounds/Funk.aiff"

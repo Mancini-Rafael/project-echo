@@ -15,10 +15,11 @@ channels = 1
 
 [hotkey]
 # Modifier-only chord that toggles recording. All listed keys must be pressed
-# simultaneously. Supported names: ctrl, alt, cmd, shift, plus any printable
-# letter/digit, "space", "f1"-"f12". Modifier names match either side
-# (e.g. "ctrl" matches both ctrl_l and ctrl_r).
-chord = ["ctrl", "alt", "cmd"]
+# simultaneously. Supported names (Mac-native): control, option, command, shift.
+# Cross-platform aliases (ctrl, alt, cmd) are also accepted. You can also use
+# any printable letter/digit, "space", "f1"-"f12". Modifier names match either
+# side (e.g. "control" matches both ctrl_l and ctrl_r).
+chord = ["control", "option", "command"]
 
 [hotkey.sounds]
 # Paths to sound files (.aiff/.wav). macOS system sounds live in

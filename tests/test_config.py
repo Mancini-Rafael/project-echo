@@ -77,10 +77,18 @@ def _write_config_with_hotkey(tmp_path, hotkey_section: str) -> Path:
 def test_hotkey_config_defaults_when_section_missing(tmp_path: Path) -> None:
     cfg_path = _write_config_with_hotkey(tmp_path, "")
     cfg = load_config(cfg_path)
-    assert cfg.hotkey.chord == ("ctrl", "alt", "cmd")
+    assert cfg.hotkey.chord == ("control", "option", "command")
     assert cfg.hotkey.sound_start == "/System/Library/Sounds/Pop.aiff"
     assert cfg.hotkey.sound_stop == "/System/Library/Sounds/Tink.aiff"
     assert cfg.hotkey.sound_empty == "/System/Library/Sounds/Funk.aiff"
+
+
+def test_hotkey_config_accepts_legacy_aliases(tmp_path: Path) -> None:
+    """Old chord names (ctrl/alt/cmd) must still parse — backwards compatible."""
+    section = '[hotkey]\nchord = ["ctrl", "alt", "cmd"]\n'
+    cfg_path = _write_config_with_hotkey(tmp_path, section)
+    cfg = load_config(cfg_path)
+    assert cfg.hotkey.chord == ("ctrl", "alt", "cmd")
 
 
 def test_hotkey_config_parses_custom_section(tmp_path: Path) -> None:

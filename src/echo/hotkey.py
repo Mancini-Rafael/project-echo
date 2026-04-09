@@ -18,10 +18,15 @@ from echo.config import ConfigError
 
 
 _MODIFIERS: dict[str, list[Key]] = {
+    # Mac-native names (preferred)
+    "control": [Key.ctrl_l, Key.ctrl_r],
+    "option":  [Key.alt_l, Key.alt_r],
+    "command": [Key.cmd_l, Key.cmd_r],
+    "shift":   [Key.shift_l, Key.shift_r],
+    # Cross-platform aliases (kept so existing configs still work)
     "ctrl": [Key.ctrl_l, Key.ctrl_r],
-    "alt": [Key.alt_l, Key.alt_r],
-    "cmd": [Key.cmd_l, Key.cmd_r],
-    "shift": [Key.shift_l, Key.shift_r],
+    "alt":  [Key.alt_l, Key.alt_r],
+    "cmd":  [Key.cmd_l, Key.cmd_r],
 }
 
 _NAMED: dict[str, Key] = {
