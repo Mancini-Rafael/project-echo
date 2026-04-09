@@ -51,7 +51,13 @@ The first time you run `ec`, macOS will ask for microphone permission for
 your terminal. Grant it via **System Settings → Privacy & Security →
 Microphone**.
 
+For the global hotkey daemon (`ec listen`), you also need to grant
+**Accessibility** permission to your terminal. macOS will prompt the first
+time. Grant it via **System Settings → Privacy & Security → Accessibility**.
+
 ## Usage
+
+### One-shot (terminal)
 
 ```sh
 uv run ec
@@ -64,13 +70,36 @@ uv run ec
 5. `> your transcribed text`
 6. `✓ Copied to clipboard.`
 
+### Background daemon (global hotkey)
+
+Start the daemon in any terminal — leave it running:
+
+```sh
+uv run ec listen
+```
+
+Now press **⌃⌥⌘** (control + option + command) anywhere on the system to
+toggle a recording. You'll hear a beep on start and a different beep on stop.
+The transcription lands on your clipboard ~1s after you press the chord
+again. Configure the chord and sound files in `config/config.toml` under
+`[hotkey]` and `[hotkey.sounds]`.
+
+To stop the daemon from any other terminal:
+
+```sh
+uv run ec stop
+```
+
+To restart: `uv run ec stop && uv run ec listen`.
+
 ### Flags
 
-| Flag        | Effect                                                            |
-|-------------|-------------------------------------------------------------------|
-| `--verbose` | Print per-stage timings (record, transcribe) to stderr at the end |
-| `--clean`   | Reserved for future LLM cleanup pass; currently exits with a stub |
-| `--help`    | argparse help                                                     |
+| Command       | Flag        | Effect                                                            |
+|---------------|-------------|-------------------------------------------------------------------|
+| `ec`          | `--verbose` | Print per-stage timings to stderr                                 |
+| `ec`          | `--clean`   | Reserved for future LLM cleanup pass; currently exits with a stub |
+| `ec listen`   | `--verbose` | Print per-recording timings                                       |
+| `ec listen`   | `--force`   | Overwrite an existing PID file                                    |
 
 ## Project Layout
 
@@ -80,11 +109,14 @@ project-echo/
 ├── docs/superpowers/specs/ # design documents
 ├── .claude/plans/          # implementation plans
 ├── src/echo/
-│   ├── __main__.py         # entry point and orchestration
-│   ├── config.py           # TOML loading
-│   ├── recorder.py         # mic capture + spacebar stop
+│   ├── __main__.py         # entry point, subcommand dispatch, PID file
+│   ├── config.py           # TOML loading + HotkeyConfig
+│   ├── recorder.py         # RecordingSession (thread-friendly mic capture)
 │   ├── transcriber.py      # OpenAI client wrapper
 │   ├── clipboard.py        # pbcopy wrapper
+│   ├── daemon.py           # hotkey daemon state machine
+│   ├── hotkey.py           # chord parsing + ChordDetector
+│   ├── sounds.py           # afplay wrapper
 │   └── ui.py               # terminal status formatters
 └── tests/                  # pytest, no real network or hardware
 ```
@@ -118,12 +150,15 @@ tests. Everything else is covered.
 - [ ] Benchmark latency and accuracy against the OpenAI default
 - [ ] Optional offline mode (no network calls at all)
 
-### Hotkey daemon
+### Hotkey daemon — complete
 
-- [ ] Background process holding the mic stream open
-- [ ] Global hotkey (push-to-talk or toggle) instead of running `ec` per recording
-- [ ] Menu bar indicator for recording state
+- [x] Long-running daemon (`ec listen`) holding the mic stream open between presses
+- [x] Configurable global hotkey chord (default `⌃⌥⌘`) defined in `config.toml`
+- [x] Configurable start/stop/empty sound cues
+- [x] PID file lifecycle and `ec stop` for clean shutdown
+- [x] Survives transient failures (mic permission, API errors, missing sound files)
 - [ ] LaunchAgent for auto-start on login
+- [ ] Menu bar indicator for recording state
 
 ## License
 
