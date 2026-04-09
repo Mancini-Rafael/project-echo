@@ -127,4 +127,4 @@ tests. Everything else is covered.
 
 ## License
 
-Personal project. No license declared.
+[The Unlicense](LICENSE) — public domain. Do whatever you want with it.
