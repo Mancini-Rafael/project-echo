@@ -16,6 +16,20 @@ class ConfigError(Exception):
     """Raised when configuration cannot be loaded or is invalid."""
 
 
+_DEFAULT_HOTKEY_CHORD: tuple[str, ...] = ("ctrl", "alt", "cmd")
+_DEFAULT_SOUND_START = "/System/Library/Sounds/Pop.aiff"
+_DEFAULT_SOUND_STOP = "/System/Library/Sounds/Tink.aiff"
+_DEFAULT_SOUND_EMPTY = "/System/Library/Sounds/Funk.aiff"
+
+
+@dataclass(frozen=True)
+class HotkeyConfig:
+    chord: tuple[str, ...]
+    sound_start: str
+    sound_stop: str
+    sound_empty: str
+
+
 @dataclass(frozen=True)
 class Config:
     model: str
@@ -23,6 +37,7 @@ class Config:
     language: str
     sample_rate: int
     channels: int
+    hotkey: HotkeyConfig
 
     @staticmethod
     def require_api_key() -> str:
@@ -33,6 +48,28 @@ class Config:
                 "Export it before running ec."
             )
         return key
+
+
+def _parse_hotkey(data: dict) -> HotkeyConfig:
+    section = data.get("hotkey", {})
+    chord_raw = section.get("chord", list(_DEFAULT_HOTKEY_CHORD))
+    if not isinstance(chord_raw, list) or not all(isinstance(k, str) for k in chord_raw):
+        raise ConfigError("hotkey.chord must be a list of strings")
+    if not chord_raw:
+        raise ConfigError("hotkey.chord cannot be empty")
+
+    # Validate each key name now so the user gets an error at config-load time,
+    # not later when the daemon tries to start.
+    from echo.hotkey import parse_chord
+    parse_chord(chord_raw)
+
+    sounds = section.get("sounds", {}) if isinstance(section, dict) else {}
+    return HotkeyConfig(
+        chord=tuple(chord_raw),
+        sound_start=str(sounds.get("start", _DEFAULT_SOUND_START)),
+        sound_stop=str(sounds.get("stop", _DEFAULT_SOUND_STOP)),
+        sound_empty=str(sounds.get("empty", _DEFAULT_SOUND_EMPTY)),
+    )
 
 
 def load_config(path: Path, example_path: Path | None = None) -> Config:
@@ -55,6 +92,7 @@ def load_config(path: Path, example_path: Path | None = None) -> Config:
             language=data["transcription"].get("language", ""),
             sample_rate=int(data["recording"]["sample_rate"]),
             channels=int(data["recording"]["channels"]),
+            hotkey=_parse_hotkey(data),
         )
     except KeyError as e:
         raise ConfigError(f"Missing required config key: {e}") from e

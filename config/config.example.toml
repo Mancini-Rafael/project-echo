@@ -12,3 +12,18 @@ language = "en"
 [recording]
 sample_rate = 16000
 channels = 1
+
+[hotkey]
+# Modifier-only chord that toggles recording. All listed keys must be pressed
+# simultaneously. Supported names: ctrl, alt, cmd, shift, plus any printable
+# letter/digit, "space", "f1"-"f12". Modifier names match either side
+# (e.g. "ctrl" matches both ctrl_l and ctrl_r).
+chord = ["ctrl", "alt", "cmd"]
+
+[hotkey.sounds]
+# Paths to sound files (.aiff/.wav). macOS system sounds live in
+# /System/Library/Sounds/ (Pop, Tink, Glass, Funk, Bottle, Frog, Hero,
+# Morse, Ping, Purr, Sosumi, Submarine). Set to "" to disable a cue.
+start = "/System/Library/Sounds/Pop.aiff"
+stop = "/System/Library/Sounds/Tink.aiff"
+empty = "/System/Library/Sounds/Funk.aiff"

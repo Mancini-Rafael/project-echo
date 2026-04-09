@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from echo.config import Config
+from echo.config import Config, HotkeyConfig
 
 
 @pytest.fixture
@@ -14,6 +14,12 @@ def fake_config() -> Config:
         language="en",
         sample_rate=16000,
         channels=1,
+        hotkey=HotkeyConfig(
+            chord=("ctrl", "alt", "cmd"),
+            sound_start="",
+            sound_stop="",
+            sound_empty="",
+        ),
     )
 
 
