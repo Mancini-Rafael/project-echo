@@ -14,5 +14,8 @@ build/
 config/*
 !config/config.example.toml
 
+# Local AI working notes (specs, plans, etc)
+.claude/
+
 # OS
 .DS_Store

@@ -107,8 +107,6 @@ To restart: `uv run ec stop && uv run ec listen`.
 ```
 project-echo/
 ├── config/                 # gitignored except config.example.toml
-├── docs/superpowers/specs/ # design documents
-├── .claude/plans/          # implementation plans
 ├── src/echo/
 │   ├── __main__.py         # entry point, subcommand dispatch, PID file
 │   ├── config.py           # TOML loading + HotkeyConfig
