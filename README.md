@@ -192,24 +192,26 @@ A few details worth knowing:
   startup, refuses to start if the file already exists and the named process
   is alive, cleans up stale files automatically. `ec stop` reads the PID,
   sends SIGTERM, polls for 2 seconds, escalates to SIGKILL if still alive.
-- **Sound cues.** Three configurable cues (`start`, `stop`, `empty`) play via
-  `afplay` in a non-blocking subprocess. Missing files become silent at
-  startup with a warning instead of crashing the daemon.
+- **Sound cues.** Four configurable cues (`start`, `stop`, `empty`, `success`)
+  play via `afplay` in a non-blocking subprocess. Missing files become silent
+  at startup with a warning instead of crashing the daemon.
 
 ## Project Layout
 
 ```
 project-echo/
+├── .github/workflows/      # CI pipeline (lint, test, commitlint)
 ├── config/                 # gitignored except config.example.toml
 ├── src/echo/
+│   ├── __init__.py
 │   ├── __main__.py         # entry point, subcommand dispatch, PID file
+│   ├── clipboard.py        # pbcopy + osascript paste wrappers
 │   ├── config.py           # TOML loading + HotkeyConfig
-│   ├── recorder.py         # RecordingSession (thread-friendly mic capture)
-│   ├── transcriber.py      # OpenAI client wrapper + vocab-echo guard
-│   ├── clipboard.py        # pbcopy wrapper
 │   ├── daemon.py           # hotkey daemon state machine
 │   ├── hotkey.py           # chord parsing + ChordDetector
+│   ├── recorder.py         # RecordingSession (thread-friendly mic capture)
 │   ├── sounds.py           # afplay wrapper
+│   ├── transcriber.py      # OpenAI client wrapper + vocab-echo guard
 │   └── ui.py               # terminal status formatters
 └── tests/                  # pytest, no real network or hardware
 ```
@@ -244,9 +246,13 @@ A few notes if you're sending a pull request:
   external boundaries (OpenAI, pbcopy, afplay, the filesystem) mocked. New
   code in those areas should follow the same pattern — tests must not hit
   real networks, microphones, or speakers.
-- **Style.** No formal linter is wired up. Match the existing style: type
+- **Style.** The project uses [Ruff](https://docs.astral.sh/ruff/) for
+  linting and formatting, enforced in CI. Run `uv run ruff check src/ tests/`
+  and `uv run ruff format src/ tests/` before submitting. Beyond that: type
   hints, frozen dataclasses where they fit, small focused modules, errors as
   exceptions with actionable messages.
+- **Commits.** Use [Conventional Commits](https://www.conventionalcommits.org/)
+  (`feat:`, `fix:`, `chore:`, `docs:`, etc.). CI enforces this via commitlint.
 - **Scope.** The project deliberately stays small. Local-LLM support and a
   LaunchAgent are on the roadmap; menu bar UI and cross-platform support are
   not. If you're proposing a substantial new feature, open an issue first so
@@ -274,6 +280,7 @@ A few notes if you're sending a pull request:
 - [x] Configurable start/stop/empty sound cues
 - [x] PID file lifecycle and `ec stop` for clean shutdown
 - [x] Survives transient failures (mic permission, API errors, missing sound files)
+- [x] Optional auto-paste (`--auto-paste`) simulates Cmd+V after transcription
 
 ### Local LLM — next
 
