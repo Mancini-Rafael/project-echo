@@ -5,6 +5,7 @@ import pytest
 
 from echo.config import Config, HotkeyConfig
 from echo.daemon import Daemon
+from echo.clipboard import ClipboardError
 from echo.recorder import RecorderError
 from echo.transcriber import TranscriberError
 
@@ -28,7 +29,7 @@ def cfg(tmp_path: Path) -> Config:
 
 
 def _make_daemon(cfg, mocker, *, transcribe_return="hello", transcribe_side_effect=None,
-                 stop_side_effect=None):
+                 stop_side_effect=None, paste_fn=None):
     fake_session = MagicMock()
     fake_session.is_recording = True
     if stop_side_effect is not None:
@@ -54,6 +55,7 @@ def _make_daemon(cfg, mocker, *, transcribe_return="hello", transcribe_side_effe
         transcribe_fn=fake_transcribe,
         copy_fn=fake_copy,
         sounds_module=fake_sounds,
+        paste_fn=paste_fn,
     )
     # Avoid touching the filesystem in tests.
     daemon._make_wav_path = lambda: Path("/tmp/echo-test.wav")  # type: ignore[method-assign]
@@ -125,3 +127,35 @@ def test_daemon_exception_in_callback_returns_to_idle(cfg, mocker) -> None:
     session.start.side_effect = RuntimeError("boom")
     d.on_chord()
     assert d.state == "idle"
+
+
+def test_daemon_calls_paste_fn_after_copy(cfg, mocker) -> None:
+    fake_paste = MagicMock()
+    d, _, _, _, copy_fn, sounds = _make_daemon(cfg, mocker, paste_fn=fake_paste)
+    d.on_chord()  # idle → recording
+    d.on_chord()  # recording → processing → idle
+    assert d.state == "idle"
+    copy_fn.assert_called_once_with("hello")
+    fake_paste.assert_called_once()
+    sounds.play.assert_any_call(cfg.hotkey.sound_success)
+
+
+def test_daemon_skips_paste_when_paste_fn_is_none(cfg, mocker) -> None:
+    d, _, _, _, copy_fn, sounds = _make_daemon(cfg, mocker, paste_fn=None)
+    d.on_chord()  # idle → recording
+    d.on_chord()  # recording → processing → idle
+    assert d.state == "idle"
+    copy_fn.assert_called_once_with("hello")
+    sounds.play.assert_any_call(cfg.hotkey.sound_success)
+
+
+def test_daemon_paste_failure_still_succeeds(cfg, mocker) -> None:
+    fake_paste = MagicMock(side_effect=ClipboardError("osascript failed"))
+    d, _, _, _, copy_fn, sounds = _make_daemon(cfg, mocker, paste_fn=fake_paste)
+    d.on_chord()  # idle → recording
+    d.on_chord()  # recording → processing → idle
+    assert d.state == "idle"
+    copy_fn.assert_called_once_with("hello")
+    fake_paste.assert_called_once()
+    # Success sound still plays — transcription is on clipboard.
+    sounds.play.assert_any_call(cfg.hotkey.sound_success)

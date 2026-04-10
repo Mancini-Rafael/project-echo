@@ -36,6 +36,7 @@ class Daemon:
         transcribe_fn: Callable[..., str] = default_transcribe,
         copy_fn: Callable[[str], None] = default_copy,
         sounds_module=default_sounds,
+        paste_fn: Callable[[], None] | None = None,
     ) -> None:
         self._config = config
         self._client = openai_client
@@ -47,6 +48,7 @@ class Daemon:
         self._transcribe = transcribe_fn
         self._copy = copy_fn
         self._sounds = sounds_module
+        self._paste_fn = paste_fn
 
         self._state: State = "idle"
         self._lock = threading.Lock()
@@ -153,6 +155,13 @@ class Daemon:
                 return
 
             self._sounds.play(self._config.hotkey.sound_success)
+
+            if self._paste_fn is not None:
+                try:
+                    self._paste_fn()
+                except ClipboardError as e:
+                    sys.stderr.write(format_error(f"auto-paste failed: {e}") + "\n")
+
             wav_path.unlink(missing_ok=True)
         finally:
             with self._lock:
