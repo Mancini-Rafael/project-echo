@@ -1,5 +1,9 @@
 # project-echo
 
+<p align="center">
+  <img src="logo-project-echo.png" alt="Project Echo" width="300" />
+</p>
+
 A macOS dictation tool. Press a global hotkey, speak, press it again — the
 transcription lands on your clipboard. Works from any app, any window, any
 text field.
