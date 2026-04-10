@@ -20,6 +20,7 @@ def fake_config() -> Config:
             sound_start="",
             sound_stop="",
             sound_empty="",
+            sound_success="",
         ),
     )
 

@@ -20,6 +20,7 @@ _DEFAULT_HOTKEY_CHORD: tuple[str, ...] = ("control", "option", "command")
 _DEFAULT_SOUND_START = "/System/Library/Sounds/Pop.aiff"
 _DEFAULT_SOUND_STOP = "/System/Library/Sounds/Tink.aiff"
 _DEFAULT_SOUND_EMPTY = "/System/Library/Sounds/Funk.aiff"
+_DEFAULT_SOUND_SUCCESS = "/System/Library/Sounds/Glass.aiff"
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class HotkeyConfig:
     sound_start: str
     sound_stop: str
     sound_empty: str
+    sound_success: str
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,7 @@ def _parse_hotkey(data: dict) -> HotkeyConfig:
         sound_start=str(sounds.get("start", _DEFAULT_SOUND_START)),
         sound_stop=str(sounds.get("stop", _DEFAULT_SOUND_STOP)),
         sound_empty=str(sounds.get("empty", _DEFAULT_SOUND_EMPTY)),
+        sound_success=str(sounds.get("success", _DEFAULT_SOUND_SUCCESS)),
     )
 
 

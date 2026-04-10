@@ -152,6 +152,7 @@ class Daemon:
                 self._sounds.play(self._config.hotkey.sound_empty)
                 return
 
+            self._sounds.play(self._config.hotkey.sound_success)
             wav_path.unlink(missing_ok=True)
         finally:
             with self._lock:
@@ -169,6 +170,7 @@ class Daemon:
                 "start": self._config.hotkey.sound_start,
                 "stop": self._config.hotkey.sound_stop,
                 "empty": self._config.hotkey.sound_empty,
+                "success": self._config.hotkey.sound_success,
             }
         )
         from dataclasses import replace
@@ -179,6 +181,7 @@ class Daemon:
             sound_start=validated["start"],
             sound_stop=validated["stop"],
             sound_empty=validated["empty"],
+            sound_success=validated["success"],
         )
         self._config = replace(self._config, hotkey=new_hotkey)
 

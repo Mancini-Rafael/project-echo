@@ -81,6 +81,7 @@ def test_hotkey_config_defaults_when_section_missing(tmp_path: Path) -> None:
     assert cfg.hotkey.sound_start == "/System/Library/Sounds/Pop.aiff"
     assert cfg.hotkey.sound_stop == "/System/Library/Sounds/Tink.aiff"
     assert cfg.hotkey.sound_empty == "/System/Library/Sounds/Funk.aiff"
+    assert cfg.hotkey.sound_success == "/System/Library/Sounds/Glass.aiff"
 
 
 def test_hotkey_config_rejects_legacy_aliases(tmp_path: Path) -> None:

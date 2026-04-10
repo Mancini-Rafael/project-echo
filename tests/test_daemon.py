@@ -22,6 +22,7 @@ def cfg(tmp_path: Path) -> Config:
             sound_start="",
             sound_stop="",
             sound_empty="",
+            sound_success="",
         ),
     )
 
@@ -75,6 +76,8 @@ def test_daemon_recording_to_idle_with_copy(cfg, mocker) -> None:
     assert d.state == "idle"
     transcribe_fn.assert_called_once()
     copy_fn.assert_called_once_with("hello")
+    # Success sound must be played after clipboard copy.
+    sounds.play.assert_any_call(cfg.hotkey.sound_success)
 
 
 def test_daemon_too_short_recording_returns_to_idle(cfg, mocker) -> None:

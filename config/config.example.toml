@@ -4,8 +4,7 @@ model = "gpt-4o-transcribe"
 [transcription]
 vocabulary_prompt = """
 TypeScript, Python, Postgres, Kubernetes, Docker, Rails, Django, Flask,
-React, Next.js, Tailwind, npm, pnpm, uv, async, await, webhook, OAuth,
-Vulcan, Tarifei, Comex Radar, Rafael Mancini
+React, Next.js, Tailwind, npm, pnpm, uv, async, await, webhook, OAuth
 """
 language = "en"
 
@@ -27,3 +26,4 @@ chord = ["control", "option", "command"]
 start = "/System/Library/Sounds/Pop.aiff"
 stop = "/System/Library/Sounds/Tink.aiff"
 empty = "/System/Library/Sounds/Funk.aiff"
+success = "/System/Library/Sounds/Glass.aiff"
