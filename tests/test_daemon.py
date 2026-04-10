@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from echo.clipboard import ClipboardError
 from echo.config import Config, HotkeyConfig
 from echo.daemon import Daemon
-from echo.clipboard import ClipboardError
 from echo.recorder import RecorderError
 from echo.transcriber import TranscriberError
 
@@ -28,8 +28,15 @@ def cfg(tmp_path: Path) -> Config:
     )
 
 
-def _make_daemon(cfg, mocker, *, transcribe_return="hello", transcribe_side_effect=None,
-                 stop_side_effect=None, paste_fn=None):
+def _make_daemon(
+    cfg,
+    mocker,
+    *,
+    transcribe_return="hello",
+    transcribe_side_effect=None,
+    stop_side_effect=None,
+    paste_fn=None,
+):
     fake_session = MagicMock()
     fake_session.is_recording = True
     if stop_side_effect is not None:
@@ -40,9 +47,7 @@ def _make_daemon(cfg, mocker, *, transcribe_return="hello", transcribe_side_effe
         )
 
     fake_session_factory = MagicMock(return_value=fake_session)
-    fake_transcribe = MagicMock(
-        return_value=transcribe_return, side_effect=transcribe_side_effect
-    )
+    fake_transcribe = MagicMock(return_value=transcribe_return, side_effect=transcribe_side_effect)
     fake_copy = MagicMock()
     fake_sounds = MagicMock()
     fake_sounds.play = MagicMock()
@@ -72,7 +77,7 @@ def test_daemon_idle_to_recording(cfg, mocker) -> None:
 
 
 def test_daemon_recording_to_idle_with_copy(cfg, mocker) -> None:
-    d, session, _, transcribe_fn, copy_fn, sounds = _make_daemon(cfg, mocker)
+    d, _, _, transcribe_fn, copy_fn, sounds = _make_daemon(cfg, mocker)
     d.on_chord()  # idle → recording
     d.on_chord()  # recording → processing → idle
     assert d.state == "idle"
@@ -98,9 +103,7 @@ def test_daemon_empty_transcription_does_not_copy(cfg, mocker) -> None:
 
 
 def test_daemon_transcribe_error_keeps_wav_and_returns_to_idle(cfg, mocker) -> None:
-    d, *_ = _make_daemon(
-        cfg, mocker, transcribe_side_effect=TranscriberError("api down")
-    )
+    d, *_ = _make_daemon(cfg, mocker, transcribe_side_effect=TranscriberError("api down"))
     d.on_chord()
     d.on_chord()
     assert d.state == "idle"

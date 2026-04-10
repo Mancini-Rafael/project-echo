@@ -3,6 +3,7 @@
 Loads TOML config from disk, bootstraps from an example file on first run,
 and reads the OpenAI API key from the environment.
 """
+
 from __future__ import annotations
 
 import os
@@ -46,8 +47,7 @@ class Config:
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
             raise ConfigError(
-                "OPENAI_API_KEY environment variable is not set. "
-                "Export it before running ec."
+                "OPENAI_API_KEY environment variable is not set. Export it before running ec."
             )
         return key
 
@@ -63,6 +63,7 @@ def _parse_hotkey(data: dict) -> HotkeyConfig:
     # Validate each key name now so the user gets an error at config-load time,
     # not later when the daemon tries to start.
     from echo.hotkey import parse_chord
+
     parse_chord(chord_raw)
 
     sounds = section.get("sounds", {}) if isinstance(section, dict) else {}

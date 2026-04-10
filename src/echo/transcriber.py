@@ -1,4 +1,5 @@
 """OpenAI audio transcription wrapper."""
+
 from __future__ import annotations
 
 import re

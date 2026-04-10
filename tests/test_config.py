@@ -1,10 +1,8 @@
-import os
-import tomllib
 from pathlib import Path
 
 import pytest
 
-from echo.config import Config, load_config, ConfigError
+from echo.config import Config, ConfigError, load_config
 
 
 def test_load_config_from_file(tmp_path: Path) -> None:
@@ -12,7 +10,7 @@ def test_load_config_from_file(tmp_path: Path) -> None:
     cfg_path.write_text(
         '[openai]\nmodel = "gpt-4o-transcribe"\n'
         '[transcription]\nvocabulary_prompt = "foo bar"\nlanguage = "en"\n'
-        '[recording]\nsample_rate = 16000\nchannels = 1\n'
+        "[recording]\nsample_rate = 16000\nchannels = 1\n"
     )
     cfg = load_config(cfg_path)
     assert cfg.model == "gpt-4o-transcribe"
@@ -28,7 +26,7 @@ def test_load_config_bootstraps_from_example(tmp_path: Path) -> None:
     example.write_text(
         '[openai]\nmodel = "gpt-4o-transcribe"\n'
         '[transcription]\nvocabulary_prompt = ""\nlanguage = "en"\n'
-        '[recording]\nsample_rate = 16000\nchannels = 1\n'
+        "[recording]\nsample_rate = 16000\nchannels = 1\n"
     )
     cfg = load_config(target, example_path=example)
     assert target.exists()
@@ -60,16 +58,13 @@ def test_config_returns_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 # ----- HotkeyConfig -----
 
-from echo.config import HotkeyConfig
-
 
 def _write_config_with_hotkey(tmp_path, hotkey_section: str) -> Path:
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text(
         '[openai]\nmodel = "gpt-4o-transcribe"\n'
         '[transcription]\nvocabulary_prompt = ""\nlanguage = "en"\n'
-        '[recording]\nsample_rate = 16000\nchannels = 1\n'
-        + hotkey_section
+        "[recording]\nsample_rate = 16000\nchannels = 1\n" + hotkey_section
     )
     return cfg_path
 
@@ -113,7 +108,7 @@ def test_hotkey_config_unknown_key_raises(tmp_path: Path) -> None:
 
 
 def test_hotkey_config_empty_chord_raises(tmp_path: Path) -> None:
-    section = '[hotkey]\nchord = []\n'
+    section = "[hotkey]\nchord = []\n"
     cfg_path = _write_config_with_hotkey(tmp_path, section)
     with pytest.raises(ConfigError, match="empty"):
         load_config(cfg_path)

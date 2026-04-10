@@ -1,4 +1,5 @@
 """Thin wrapper around macOS pbcopy."""
+
 from __future__ import annotations
 
 import subprocess

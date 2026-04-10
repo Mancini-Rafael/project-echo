@@ -8,6 +8,7 @@ audio cues must never crash the daemon.
 input dict with any missing-file entries replaced by "" and prints a warning
 for each.
 """
+
 from __future__ import annotations
 
 import os
@@ -37,8 +38,6 @@ def validate_paths(paths: dict[str, str]) -> dict[str, str]:
         if os.path.isfile(p):
             validated[name] = p
         else:
-            sys.stderr.write(
-                f"warning: hotkey sound '{name}' file not found: {p}; cue disabled\n"
-            )
+            sys.stderr.write(f"warning: hotkey sound '{name}' file not found: {p}; cue disabled\n")
             validated[name] = ""
     return validated

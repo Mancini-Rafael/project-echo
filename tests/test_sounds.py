@@ -1,6 +1,4 @@
-import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from echo.sounds import play, validate_paths
 

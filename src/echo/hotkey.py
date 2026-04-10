@@ -8,20 +8,20 @@ satisfy that slot (modifier names expand to left+right variants).
 calls. It fires a single callback on the leading edge of "all slots
 satisfied" and re-arms only when at least one target key is released.
 """
+
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from pynput.keyboard import Key, KeyCode
 
 from echo.config import ConfigError
 
-
 _MODIFIERS: dict[str, list[Key]] = {
     "control": [Key.ctrl_l, Key.ctrl_r],
-    "option":  [Key.alt_l, Key.alt_r],
+    "option": [Key.alt_l, Key.alt_r],
     "command": [Key.cmd_l, Key.cmd_r],
-    "shift":   [Key.shift_l, Key.shift_r],
+    "shift": [Key.shift_l, Key.shift_r],
 }
 
 _NAMED: dict[str, Key] = {
@@ -30,9 +30,18 @@ _NAMED: dict[str, Key] = {
     "tab": Key.tab,
     "esc": Key.esc,
     "escape": Key.esc,
-    "f1": Key.f1, "f2": Key.f2, "f3": Key.f3, "f4": Key.f4,
-    "f5": Key.f5, "f6": Key.f6, "f7": Key.f7, "f8": Key.f8,
-    "f9": Key.f9, "f10": Key.f10, "f11": Key.f11, "f12": Key.f12,
+    "f1": Key.f1,
+    "f2": Key.f2,
+    "f3": Key.f3,
+    "f4": Key.f4,
+    "f5": Key.f5,
+    "f6": Key.f6,
+    "f7": Key.f7,
+    "f8": Key.f8,
+    "f9": Key.f9,
+    "f10": Key.f10,
+    "f11": Key.f11,
+    "f12": Key.f12,
 }
 
 

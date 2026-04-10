@@ -53,9 +53,10 @@ def test_transcribe_strips_whitespace(tmp_path: Path) -> None:
     wav.write_bytes(b"RIFF")
     fake_client = MagicMock()
     fake_client.audio.transcriptions.create.return_value = MagicMock(text="  hi  \n")
-    assert transcribe(
-        client=fake_client, wav_path=wav, model="m", vocabulary_prompt="", language=""
-    ) == "hi"
+    assert (
+        transcribe(client=fake_client, wav_path=wav, model="m", vocabulary_prompt="", language="")
+        == "hi"
+    )
 
 
 def test_transcribe_returns_empty_when_model_echoes_vocabulary_prompt(tmp_path: Path) -> None:
@@ -101,6 +102,4 @@ def test_transcribe_raises_on_api_error(tmp_path: Path) -> None:
     fake_client = MagicMock()
     fake_client.audio.transcriptions.create.side_effect = RuntimeError("network down")
     with pytest.raises(TranscriberError, match="network down"):
-        transcribe(
-            client=fake_client, wav_path=wav, model="m", vocabulary_prompt="", language=""
-        )
+        transcribe(client=fake_client, wav_path=wav, model="m", vocabulary_prompt="", language="")

@@ -5,23 +5,26 @@ The chord callback runs on the pynput listener thread. A non-blocking
 `threading.Lock` guards the state field so events arriving during
 PROCESSING are dropped at the door.
 """
+
 from __future__ import annotations
 
 import signal
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from echo import sounds as default_sounds
-from echo.clipboard import ClipboardError, copy_to_clipboard as default_copy
+from echo.clipboard import ClipboardError
+from echo.clipboard import copy_to_clipboard as default_copy
 from echo.config import Config
 from echo.hotkey import ChordDetector, parse_chord
 from echo.recorder import RecorderError, RecordingSession
-from echo.transcriber import TranscriberError, transcribe as default_transcribe
+from echo.transcriber import TranscriberError
+from echo.transcriber import transcribe as default_transcribe
 from echo.ui import format_error, format_transcription
-
 
 State = Literal["idle", "recording", "processing"]
 
@@ -41,9 +44,7 @@ class Daemon:
         self._config = config
         self._client = openai_client
         self._session_factory = session_factory or (
-            lambda: RecordingSession(
-                sample_rate=config.sample_rate, channels=config.channels
-            )
+            lambda: RecordingSession(sample_rate=config.sample_rate, channels=config.channels)
         )
         self._transcribe = transcribe_fn
         self._copy = copy_fn
@@ -138,9 +139,7 @@ class Daemon:
                 return
 
             if not text:
-                sys.stderr.write(
-                    format_error("transcription empty; clipboard unchanged") + "\n"
-                )
+                sys.stderr.write(format_error("transcription empty; clipboard unchanged") + "\n")
                 self._sounds.play(self._config.hotkey.sound_empty)
                 wav_path.unlink(missing_ok=True)
                 return
@@ -183,6 +182,7 @@ class Daemon:
             }
         )
         from dataclasses import replace
+
         from echo.config import HotkeyConfig
 
         new_hotkey = HotkeyConfig(
@@ -224,9 +224,7 @@ class Daemon:
         signal.signal(signal.SIGTERM, self.request_stop)
 
         chord_label = "+".join(self._config.hotkey.chord)
-        sys.stderr.write(
-            f"✓ Listening for {chord_label} chord. Press Ctrl-C to quit.\n"
-        )
+        sys.stderr.write(f"✓ Listening for {chord_label} chord. Press Ctrl-C to quit.\n")
 
         try:
             self._stop_event.wait()

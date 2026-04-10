@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -97,6 +96,7 @@ def test_main_clean_flag_not_implemented(mocker, fake_config: Config) -> None:
 
 # ----- subcommand dispatch -----
 
+
 def test_main_listen_constructs_and_runs_daemon(mocker, fake_config: Config) -> None:
     from echo import __main__ as main_mod
 
@@ -157,9 +157,7 @@ def test_main_listen_refuses_when_pid_file_exists_and_alive(
     assert exit_code == 1
 
 
-def test_main_listen_cleans_stale_pid_file(
-    mocker, tmp_path: Path, fake_config: Config
-) -> None:
+def test_main_listen_cleans_stale_pid_file(mocker, tmp_path: Path, fake_config: Config) -> None:
     from echo import __main__ as main_mod
 
     pid_file = tmp_path / "echo-daemon.pid"

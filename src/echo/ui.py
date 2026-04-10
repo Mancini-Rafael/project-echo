@@ -1,4 +1,5 @@
 """Terminal output helpers for project-echo."""
+
 from __future__ import annotations
 
 

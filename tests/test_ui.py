@@ -1,4 +1,4 @@
-from echo.ui import format_recording_line, format_transcription, format_error
+from echo.ui import format_error, format_recording_line, format_transcription
 
 
 def test_format_recording_line_zero_seconds() -> None:

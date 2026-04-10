@@ -1,4 +1,5 @@
 """Entry point for the `ec` command — supports one-shot, daemon, and stop modes."""
+
 from __future__ import annotations
 
 import argparse
@@ -20,7 +21,6 @@ from echo.recorder import RecorderError, RecordingSession
 from echo.transcriber import TranscriberError, transcribe
 from echo.ui import format_error, format_recording_line, format_transcription
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "config.toml"
 EXAMPLE_PATH = REPO_ROOT / "config" / "config.example.toml"
@@ -31,6 +31,7 @@ PID_FILE = Path("/tmp/echo-daemon.pid")
 
 # ===== argparse =====
 
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ec",
@@ -39,16 +40,24 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     # Default (no subcommand): one-shot recording. Flags live on the root parser.
-    parser.add_argument("--clean", action="store_true",
-                        help="(reserved) post-process the transcription via an LLM cleanup pass")
-    parser.add_argument("--verbose", action="store_true",
-                        help="print per-stage timing breakdown to stderr")
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="(reserved) post-process the transcription via an LLM cleanup pass",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="print per-stage timing breakdown to stderr"
+    )
 
     listen_p = sub.add_parser("listen", help="Run the global hotkey daemon")
-    listen_p.add_argument("--verbose", action="store_true",
-                          help="print per-recording timing breakdown")
-    listen_p.add_argument("--force", action="store_true",
-                          help="overwrite an existing PID file (kills the previous claim)")
+    listen_p.add_argument(
+        "--verbose", action="store_true", help="print per-recording timing breakdown"
+    )
+    listen_p.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite an existing PID file (kills the previous claim)",
+    )
     listen_p.add_argument(
         "--auto-paste",
         action="store_true",
@@ -62,6 +71,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 # ===== PID file helpers =====
+
 
 def _is_alive(pid: int) -> bool:
     try:
@@ -109,6 +119,7 @@ def _release_pid_file() -> None:
 
 
 # ===== one-shot recording (existing behavior) =====
+
 
 def _print_status(line: str) -> None:
     sys.stderr.write(f"\r{line}")
@@ -227,6 +238,7 @@ def _run_oneshot(args: argparse.Namespace) -> int:
 
 # ===== ec listen =====
 
+
 def _run_listen(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(CONFIG_PATH, example_path=EXAMPLE_PATH)
@@ -251,6 +263,7 @@ def _run_listen(args: argparse.Namespace) -> int:
 
 
 # ===== ec stop =====
+
 
 def _run_stop() -> int:
     if not PID_FILE.exists():
@@ -304,6 +317,7 @@ def _run_stop() -> int:
 
 
 # ===== entry point =====
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()

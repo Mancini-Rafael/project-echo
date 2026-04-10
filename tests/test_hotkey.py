@@ -4,8 +4,8 @@ from pynput.keyboard import Key, KeyCode
 from echo.config import ConfigError
 from echo.hotkey import ChordDetector, parse_chord
 
-
 # ----- parse_chord -----
+
 
 def test_parse_chord_modifiers() -> None:
     slots = parse_chord(["control", "option", "command"])
@@ -45,6 +45,7 @@ def test_parse_chord_empty_raises() -> None:
 
 
 # ----- ChordDetector -----
+
 
 def _make_detector():
     slots = parse_chord(["control", "option", "command"])

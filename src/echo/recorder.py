@@ -4,6 +4,7 @@
 in-memory buffer, and writes a 16-bit PCM WAV on `stop()`. It can be driven
 from any thread; start/stop are independent of stdin or terminal state.
 """
+
 from __future__ import annotations
 
 import threading
@@ -53,7 +54,7 @@ class RecordingSession:
     def is_recording(self) -> bool:
         return self._stream is not None and not self._stopped
 
-    def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ARG002
+    def _callback(self, indata, frames, time_info, status) -> None:
         # Drop sounddevice status flags silently; they are non-fatal warnings.
         with self._chunks_lock:
             self._chunks.append(indata.copy())
@@ -94,9 +95,7 @@ class RecordingSession:
 
         with self._chunks_lock:
             if not self._chunks or duration < self._min_duration:
-                raise RecorderError(
-                    f"Recording too short ({duration:.2f}s); discarded"
-                )
+                raise RecorderError(f"Recording too short ({duration:.2f}s); discarded")
             audio = np.concatenate(self._chunks, axis=0)
 
         sf.write(str(output_path), audio, self._sample_rate, subtype="PCM_16")
