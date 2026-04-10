@@ -3,8 +3,8 @@
 </p>
 
 A macOS dictation tool. Press a global hotkey, speak, press it again — the
-transcription lands on your clipboard. Works from any app, any window, any
-text field.
+transcription lands on your clipboard or directly on your text input. Works
+from any app, any window, any text field.
 
 ## What it is
 
@@ -60,9 +60,9 @@ your terminal. Grant it via *System Settings → Privacy & Security →
 Microphone*.
 
 For the daemon (`ec listen`), you also need to grant **Accessibility**
-permission to your terminal so it can listen for global keypresses. macOS
-will prompt the first time. Grant it via *System Settings → Privacy &
-Security → Accessibility*.
+permission to your terminal so it can listen for global keypresses and, if
+you use `--auto-paste`, simulate keyboard input. macOS will prompt the first
+time. Grant it via *System Settings → Privacy & Security → Accessibility*.
 
 ### Usage (one-off)
 
