@@ -13,7 +13,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from echo.clipboard import ClipboardError, copy_to_clipboard
+from echo.clipboard import ClipboardError, copy_to_clipboard, paste
 from echo.config import Config, ConfigError, load_config
 from echo.daemon import Daemon
 from echo.recorder import RecorderError, RecordingSession
@@ -49,6 +49,12 @@ def _build_parser() -> argparse.ArgumentParser:
                           help="print per-recording timing breakdown")
     listen_p.add_argument("--force", action="store_true",
                           help="overwrite an existing PID file (kills the previous claim)")
+    listen_p.add_argument(
+        "--auto-paste",
+        action="store_true",
+        default=False,
+        help="simulate Cmd+V after transcription to paste into the focused app",
+    )
 
     sub.add_parser("stop", help="Stop a running daemon")
 
@@ -237,7 +243,8 @@ def _run_listen(args: argparse.Namespace) -> int:
 
     try:
         client = OpenAI(api_key=api_key)
-        daemon = Daemon(config=cfg, openai_client=client)
+        paste_fn = paste if args.auto_paste else None
+        daemon = Daemon(config=cfg, openai_client=client, paste_fn=paste_fn)
         return daemon.run()
     finally:
         _release_pid_file()
