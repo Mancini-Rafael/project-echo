@@ -1,5 +1,3 @@
-# project-echo
-
 <p align="center">
   <img src="logo-project-echo.png" alt="Project Echo" width="300" />
 </p>
