@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from echo.clipboard import ClipboardError, copy_to_clipboard
+from echo.clipboard import ClipboardError, copy_to_clipboard, paste
 
 
 def test_copy_to_clipboard_invokes_pbcopy(mocker) -> None:
@@ -38,3 +38,33 @@ def test_clipboard_round_trip_real_pbcopy() -> None:
     copy_to_clipboard("project-echo round trip")
     out = subprocess.run(["pbpaste"], capture_output=True, check=True)
     assert out.stdout.decode() == "project-echo round trip"
+
+
+def test_paste_invokes_osascript(mocker) -> None:
+    run = mocker.patch("echo.clipboard.subprocess.run")
+    run.return_value = MagicMock(returncode=0)
+    paste()
+    run.assert_called_once()
+    args, kwargs = run.call_args
+    assert args[0] == [
+        "osascript",
+        "-e",
+        'tell application "System Events" to keystroke "v" using command down',
+    ]
+    assert kwargs["check"] is True
+    assert kwargs["capture_output"] is True
+
+
+def test_paste_raises_on_osascript_failure(mocker) -> None:
+    mocker.patch(
+        "echo.clipboard.subprocess.run",
+        side_effect=subprocess.CalledProcessError(1, "osascript"),
+    )
+    with pytest.raises(ClipboardError, match="osascript"):
+        paste()
+
+
+def test_paste_raises_on_missing_osascript(mocker) -> None:
+    mocker.patch("echo.clipboard.subprocess.run", side_effect=FileNotFoundError)
+    with pytest.raises(ClipboardError, match="osascript"):
+        paste()
