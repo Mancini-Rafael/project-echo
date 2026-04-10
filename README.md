@@ -43,15 +43,20 @@ brew install uv portaudio
 # project deps
 uv sync
 
-# config (auto-bootstrapped on first run, or copy manually)
+# config — the first run creates this automatically from the example,
+# but you can copy it now to edit before running
 cp config/config.example.toml config/config.toml
 
-# api key
+# api key — add this to your shell profile (~/.zshrc) so it persists
 export OPENAI_API_KEY=sk-...
 ```
 
 Edit `config/config.toml` to tune the vocabulary prompt with your own list of
 project names, libraries, and jargon. The file is gitignored.
+
+> **Note:** The `export` command only sets the key for the current terminal
+> session. To make it permanent, add the `export OPENAI_API_KEY=...` line to
+> your `~/.zshrc` (or `~/.bashrc`), then run `source ~/.zshrc`.
 
 The first time you run `ec`, macOS will ask for **microphone permission** for
 your terminal. Grant it via *System Settings → Privacy & Security →
@@ -88,8 +93,9 @@ uv run ec listen
 You'll see `✓ Listening for control+option+command chord. Press Ctrl-C to
 quit.`
 
-Now press **⌃⌥⌘** (Control + Option + Command) anywhere on the system to
-toggle a recording:
+Now press **⌃⌥⌘** (Control + Option + Command) simultaneously anywhere on
+the system to toggle a recording. This is a modifier-only chord — you don't
+press any letter key, just hold all three modifiers at the same time:
 
 - First press → start beep, mic opens
 - Speak
@@ -114,7 +120,6 @@ To restart cleanly: `uv run ec stop && uv run ec listen`.
 | Command       | Flag        | Effect                                                            |
 |---------------|-------------|-------------------------------------------------------------------|
 | `ec`          | `--verbose` | Print per-stage timings to stderr                                 |
-| `ec`          | `--clean`   | Reserved for future LLM cleanup pass; currently exits with a stub |
 | `ec listen`   | `--verbose` | Print per-recording timings                                       |
 | `ec listen`   | `--force`   | Overwrite an existing PID file                                    |
 | `ec listen`   | `--auto-paste` | Simulate Cmd+V after transcription to paste into the focused app |
@@ -159,40 +164,63 @@ WAV is POSTed to the OpenAI audio API with the configured vocabulary prompt
 text comes back → pbcopy → clipboard
         │
         ▼
+(if --auto-paste) simulate Cmd+V → text lands in focused app
+        │
+        ▼
 temp WAV is deleted
 ```
 
 A few details worth knowing:
 
-- **Audio format.** 16 kHz mono int16 PCM. Matches Whisper's native input
-  rate, so no resampling, smaller files, faster upload.
-- **Vocabulary prompt.** OpenAI's audio API takes a `prompt` parameter that
-  biases the model toward specific words. We stuff it with your dev jargon at
-  startup. Bigger accuracy lever than the model choice itself for technical
-  speech.
+- **Audio format.** Records at 16 kHz mono, which matches what the OpenAI
+  transcription model expects natively — no resampling needed, smaller files,
+  faster upload.
+- **Vocabulary prompt.** The OpenAI audio API accepts a `prompt` parameter
+  that biases the model toward specific words. You fill this with your
+  developer jargon (library names, project names, acronyms) in the config
+  file. This is the single biggest accuracy lever for technical speech.
 - **Vocabulary echo guard.** Whisper-family models sometimes echo the
-  vocabulary prompt back when there's no actual speech to transcribe. The
-  transcriber detects this case (after normalizing whitespace and case) and
-  returns an empty string instead, so the daemon doesn't paste the vocab
-  list into your clipboard on a silent recording.
-- **Daemon state machine.** The daemon is a three-state machine: `idle`,
-  `recording`, `processing`. The `processing` state exists to swallow chord
-  events that arrive while transcription is running, so accidental double-presses
-  during the ~1s API window can't start a new recording. State transitions are
-  guarded by a `threading.Lock` acquired non-blocking from the chord callback —
-  events that can't grab the lock are dropped at the door.
-- **Chord detection.** The chord is parsed into a tuple of "slots", where each
-  slot is a frozenset of pynput keys that satisfy that slot (e.g. the
-  `control` slot accepts both `ctrl_l` and `ctrl_r`). The detector fires once
-  on the leading edge of "all slots satisfied" and re-arms only when at least
-  one target key is released.
-- **PID file lifecycle.** `ec listen` writes `/tmp/echo-daemon.pid` on
-  startup, refuses to start if the file already exists and the named process
-  is alive, cleans up stale files automatically. `ec stop` reads the PID,
-  sends SIGTERM, polls for 2 seconds, escalates to SIGKILL if still alive.
-- **Sound cues.** Four configurable cues (`start`, `stop`, `empty`, `success`)
-  play via `afplay` in a non-blocking subprocess. Missing files become silent
-  at startup with a warning instead of crashing the daemon.
+  vocabulary prompt back when there's no actual speech. The tool detects
+  this and returns an empty string instead, so a silent recording doesn't
+  paste the vocab list into your clipboard.
+- **Sound cues.** Four configurable sounds (`start`, `stop`, `empty`,
+  `success`) play via `afplay`. If a sound file is missing, that cue
+  becomes silent with a warning — the daemon won't crash over a missing
+  `.aiff` file.
+- **Daemon resilience.** The daemon uses a PID file at `/tmp/echo-daemon.pid`
+  to prevent duplicate instances. `ec stop` sends a graceful shutdown signal.
+  Accidental double-presses during transcription are ignored — you can't
+  start a new recording while the previous one is still processing.
+
+<details>
+<summary>Internals (for contributors)</summary>
+
+- **Daemon state machine.** Three states: `idle`, `recording`, `processing`.
+  The `processing` state swallows chord events while transcription runs.
+  State transitions are guarded by a `threading.Lock` acquired non-blocking
+  from the chord callback — events that can't grab the lock are dropped.
+- **Chord detection.** The chord is parsed into a tuple of "slots", where
+  each slot is a frozenset of pynput keys (e.g. the `control` slot accepts
+  both `ctrl_l` and `ctrl_r`). The detector fires once on the leading edge
+  of "all slots satisfied" and re-arms when at least one target key is
+  released.
+- **PID file lifecycle.** `ec listen` writes the PID file on startup, refuses
+  to start if the file exists and the named process is alive, cleans up stale
+  files automatically. `ec stop` reads the PID, sends SIGTERM, polls for 2
+  seconds, escalates to SIGKILL if still alive.
+
+</details>
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `OPENAI_API_KEY not set` | API key not in your environment | Add `export OPENAI_API_KEY=sk-...` to `~/.zshrc` and run `source ~/.zshrc` |
+| `ec` starts but no audio is captured | Microphone permission not granted | *System Settings → Privacy & Security → Microphone* → enable your terminal |
+| `ec listen` starts but the hotkey does nothing | Accessibility permission not granted | *System Settings → Privacy & Security → Accessibility* → enable your terminal |
+| `daemon already running (PID ...)` | A previous daemon is still alive | Run `uv run ec stop` first, or pass `--force` |
+| `--auto-paste` doesn't paste | Accessibility permission not granted, or no focused app | Check Accessibility permission; the transcription is still on your clipboard |
+| Sound cues don't play | Sound file path in config is wrong or missing | Check `[hotkey.sounds]` paths in `config/config.toml`; set to `""` to disable |
 
 ## Project Layout
 
@@ -275,7 +303,7 @@ A few notes if you're sending a pull request:
 
 - [x] Long-running daemon (`ec listen`) holding the mic stream open between presses
 - [x] Configurable global hotkey chord (default `⌃⌥⌘`) defined in `config.toml`
-- [x] Configurable start/stop/empty sound cues
+- [x] Configurable start/stop/empty/success sound cues
 - [x] PID file lifecycle and `ec stop` for clean shutdown
 - [x] Survives transient failures (mic permission, API errors, missing sound files)
 - [x] Optional auto-paste (`--auto-paste`) simulates Cmd+V after transcription
