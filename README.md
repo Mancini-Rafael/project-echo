@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="logo-project-echo.png" alt="Project Echo" width="300" />
-</p>
+![Project Echo](logo-project-echo.png)
 
 A macOS dictation tool. Press a global hotkey, speak, press it again — the
 transcription lands on your clipboard or directly on your text input. Works
