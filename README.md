@@ -119,6 +119,24 @@ To restart cleanly: `uv run ec stop && uv run ec listen`.
 | `ec`          | `--clean`   | Reserved for future LLM cleanup pass; currently exits with a stub |
 | `ec listen`   | `--verbose` | Print per-recording timings                                       |
 | `ec listen`   | `--force`   | Overwrite an existing PID file                                    |
+| `ec listen`   | `--auto-paste` | Simulate Cmd+V after transcription to paste into the focused app |
+
+#### Auto-paste
+
+Pass `--auto-paste` to `ec listen` to have the daemon simulate **Cmd+V**
+after every successful transcription:
+
+```sh
+uv run ec listen --auto-paste
+```
+
+The paste is unconditional — the daemon does not check whether a text input
+field is focused. In most apps, pasting into a non-text context is a no-op.
+If the paste fails (e.g. Accessibility permission not granted), the
+transcription is still on your clipboard for manual pasting.
+
+The Accessibility permission required for the global hotkey already covers the
+paste simulation — no additional setup needed.
 
 ## How does it work?
 
