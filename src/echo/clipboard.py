@@ -37,4 +37,13 @@ def paste() -> None:
     except FileNotFoundError as e:
         raise ClipboardError("osascript not found; project-echo only supports macOS") from e
     except subprocess.CalledProcessError as e:
-        raise ClipboardError(f"osascript paste failed with exit code {e.returncode}") from e
+        stderr = (e.stderr or b"").decode("utf-8", errors="replace").strip()
+        detail = f": {stderr}" if stderr else ""
+        if "1002" in stderr or "not allowed to send keystrokes" in stderr:
+            detail += (
+                "\nGrant Accessibility permission to the app you launched `ec` from "
+                "(System Settings -> Privacy & Security -> Accessibility), then restart it."
+            )
+        raise ClipboardError(
+            f"osascript paste failed with exit code {e.returncode}{detail}"
+        ) from e

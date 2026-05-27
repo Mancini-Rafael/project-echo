@@ -68,3 +68,11 @@ def test_paste_raises_on_missing_osascript(mocker) -> None:
     mocker.patch("echo.clipboard.subprocess.run", side_effect=FileNotFoundError)
     with pytest.raises(ClipboardError, match="osascript"):
         paste()
+
+
+def test_paste_surfaces_accessibility_hint(mocker) -> None:
+    err = subprocess.CalledProcessError(1, "osascript")
+    err.stderr = b"System Events got an error: osascript is not allowed to send keystrokes. (1002)"
+    mocker.patch("echo.clipboard.subprocess.run", side_effect=err)
+    with pytest.raises(ClipboardError, match="Accessibility permission"):
+        paste()

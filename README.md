@@ -67,6 +67,24 @@ permission to your terminal so it can listen for global keypresses and, if
 you use `--auto-paste`, simulate keyboard input. macOS will prompt the first
 time. Grant it via *System Settings → Privacy & Security → Accessibility*.
 
+A few macOS gotchas worth knowing:
+
+- **The permission attaches to your terminal app, not to `ec` or Python.**
+  Whatever app launches `ec` (Terminal, iTerm2, Ghostty, VS Code's integrated
+  terminal, …) is what appears in the Accessibility list. You won't find
+  "echo" or "python" there.
+- **Accessibility and Input Monitoring are separate gates.** The chord can be
+  detected (Input Monitoring) while auto-paste still fails (Accessibility), so
+  it's possible for transcription to work but `--auto-paste` not to.
+- **pynput prints `"This process is not trusted! Input event monitoring will
+  not be possible..."` on startup when Accessibility isn't granted.** It's
+  printed unconditionally and can be misleading — the hotkey may still fire.
+  If you see it together with auto-paste failures, grant Accessibility.
+- **Restart the terminal/daemon after granting.** Trust is read at process
+  start, so a daemon that was already running won't pick up a freshly granted
+  permission. Quit and relaunch it. If a previously-granted app stops working
+  after an update, toggle it off and on in the Accessibility list.
+
 ### Usage (one-off)
 
 ```sh
