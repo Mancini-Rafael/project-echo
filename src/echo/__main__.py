@@ -15,15 +15,19 @@ from pathlib import Path
 from openai import OpenAI
 
 from echo.clipboard import ClipboardError, copy_to_clipboard, paste
-from echo.config import Config, ConfigError, load_config
+from echo.config import ConfigError, load_config, resolve_config_path
 from echo.daemon import Daemon
 from echo.recorder import RecorderError, RecordingSession
 from echo.transcriber import TranscriberError, transcribe
 from echo.ui import format_error, format_recording_line, format_transcription
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = REPO_ROOT / "config" / "config.toml"
 EXAMPLE_PATH = REPO_ROOT / "config" / "config.example.toml"
+
+
+def _config_path() -> Path:
+    """Resolve at call time so $ECHO_CONFIG / env changes are honored per-run."""
+    return resolve_config_path()
 
 # Module-level so tests can monkeypatch.
 PID_FILE = Path("/tmp/echo-daemon.pid")
@@ -153,8 +157,8 @@ def _run_oneshot(args: argparse.Namespace) -> int:
         return 2
 
     try:
-        cfg = load_config(CONFIG_PATH, example_path=EXAMPLE_PATH)
-        api_key = Config.require_api_key()
+        cfg = load_config(_config_path(), example_path=EXAMPLE_PATH)
+        api_key = cfg.require_api_key()
     except ConfigError as e:
         sys.stderr.write(format_error(str(e)) + "\n")
         return 1
@@ -241,8 +245,8 @@ def _run_oneshot(args: argparse.Namespace) -> int:
 
 def _run_listen(args: argparse.Namespace) -> int:
     try:
-        cfg = load_config(CONFIG_PATH, example_path=EXAMPLE_PATH)
-        api_key = Config.require_api_key()
+        cfg = load_config(_config_path(), example_path=EXAMPLE_PATH)
+        api_key = cfg.require_api_key()
     except ConfigError as e:
         sys.stderr.write(format_error(str(e)) + "\n")
         return 1

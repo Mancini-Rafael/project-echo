@@ -41,7 +41,7 @@ def test_main_happy_path(mocker, tmp_path: Path, fake_config: Config) -> None:
     from echo import __main__ as main_mod
 
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
-    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
     _patch_session_with_recording(mocker, main_mod, tmp_path)
     mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
     mocker.patch.object(main_mod, "transcribe", return_value="hello world")
@@ -59,7 +59,7 @@ def test_main_missing_api_key_exits_nonzero(mocker, fake_config: Config) -> None
 
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
     mocker.patch.object(
-        main_mod.Config,
+        Config,
         "require_api_key",
         side_effect=ConfigError("OPENAI_API_KEY not set"),
     )
@@ -73,7 +73,7 @@ def test_main_empty_transcription_does_not_copy(
     from echo import __main__ as main_mod
 
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
-    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
     _patch_session_with_recording(mocker, main_mod, tmp_path)
     mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
     mocker.patch.object(main_mod, "transcribe", return_value="")
@@ -89,7 +89,7 @@ def test_main_clean_flag_not_implemented(mocker, fake_config: Config) -> None:
     from echo import __main__ as main_mod
 
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
-    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
 
     assert main_mod.main(argv=["--clean"]) != 0
 
@@ -101,7 +101,7 @@ def test_main_listen_constructs_and_runs_daemon(mocker, fake_config: Config) -> 
     from echo import __main__ as main_mod
 
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
-    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
     mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
 
     fake_daemon = MagicMock()
@@ -149,7 +149,7 @@ def test_main_listen_refuses_when_pid_file_exists_and_alive(
     pid_file.write_text("12345")
     mocker.patch.object(main_mod, "PID_FILE", pid_file)
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
-    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
     mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
     mocker.patch.object(main_mod.os, "kill", return_value=None)  # process is "alive"
 
@@ -164,7 +164,7 @@ def test_main_listen_cleans_stale_pid_file(mocker, tmp_path: Path, fake_config: 
     pid_file.write_text("12345")
     mocker.patch.object(main_mod, "PID_FILE", pid_file)
     mocker.patch.object(main_mod, "load_config", return_value=fake_config)
-    mocker.patch.object(main_mod.Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
     mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
     mocker.patch.object(main_mod.os, "kill", side_effect=ProcessLookupError)
 

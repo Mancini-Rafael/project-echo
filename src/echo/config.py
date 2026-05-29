@@ -41,13 +41,17 @@ class Config:
     sample_rate: int
     channels: int
     hotkey: HotkeyConfig
+    # Optional persisted API key (written by `ec setup`). The OPENAI_API_KEY
+    # env var, when set, always wins so existing shell-exported setups don't
+    # silently switch to a stale stored key.
+    api_key: str | None = None
 
-    @staticmethod
-    def require_api_key() -> str:
-        key = os.environ.get("OPENAI_API_KEY")
+    def require_api_key(self) -> str:
+        key = os.environ.get("OPENAI_API_KEY") or self.api_key
         if not key:
             raise ConfigError(
-                "OPENAI_API_KEY environment variable is not set. Export it before running ec."
+                "OPENAI_API_KEY is not set and no api_key in config. "
+                "Export OPENAI_API_KEY or run `ec setup`."
             )
         return key
 
@@ -90,6 +94,7 @@ def load_config(path: Path, example_path: Path | None = None) -> Config:
         raise ConfigError(f"Failed to parse config at {path}: {e}") from e
 
     try:
+        api_key_raw = data["openai"].get("api_key")
         return Config(
             model=data["openai"]["model"],
             vocabulary_prompt=data["transcription"].get("vocabulary_prompt", ""),
@@ -97,6 +102,40 @@ def load_config(path: Path, example_path: Path | None = None) -> Config:
             sample_rate=int(data["recording"]["sample_rate"]),
             channels=int(data["recording"]["channels"]),
             hotkey=_parse_hotkey(data),
+            api_key=str(api_key_raw) if api_key_raw else None,
         )
     except KeyError as e:
         raise ConfigError(f"Missing required config key: {e}") from e
+
+
+# ----- config path resolution -----
+
+# Legacy in-repo location, kept working for users who ran an older version.
+# Computed at import time; tests pass their own legacy_path so this constant
+# doesn't make tests environment-dependent.
+_LEGACY_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.toml"
+
+
+def resolve_config_path(legacy_path: Path | None = None) -> Path:
+    """Resolve the path to the user's config file.
+
+    Lookup order:
+      1. $ECHO_CONFIG if set (explicit override, also used by tests).
+      2. The legacy in-repo path if a file already exists there (back-compat
+         for users who set up Echo before the move to ~/.config).
+      3. $XDG_CONFIG_HOME/echo/config.toml if XDG_CONFIG_HOME is set.
+      4. $HOME/.config/echo/config.toml otherwise.
+
+    The returned path may or may not exist; callers handle creation.
+    """
+    explicit = os.environ.get("ECHO_CONFIG")
+    if explicit:
+        return Path(explicit)
+
+    legacy = legacy_path if legacy_path is not None else _LEGACY_CONFIG_PATH
+    if legacy.exists():
+        return legacy
+
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path(os.path.expanduser("~")) / ".config"
+    return base / "echo" / "config.toml"

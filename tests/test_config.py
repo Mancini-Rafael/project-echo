@@ -2,7 +2,28 @@ from pathlib import Path
 
 import pytest
 
-from echo.config import Config, ConfigError, load_config
+from echo.config import Config, ConfigError, load_config, resolve_config_path
+
+
+def _minimal_config(api_key: str | None = None) -> Config:
+    """Construct a Config with safe defaults; only api_key varies per test."""
+    from echo.config import HotkeyConfig
+
+    return Config(
+        model="gpt-4o-transcribe",
+        vocabulary_prompt="",
+        language="en",
+        sample_rate=16000,
+        channels=1,
+        api_key=api_key,
+        hotkey=HotkeyConfig(
+            chord=("control", "option", "command"),
+            sound_start="",
+            sound_stop="",
+            sound_empty="",
+            sound_success="",
+        ),
+    )
 
 
 def test_load_config_from_file(tmp_path: Path) -> None:
@@ -45,15 +66,102 @@ def test_load_config_malformed_toml(tmp_path: Path) -> None:
         load_config(cfg_path)
 
 
-def test_config_requires_api_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_require_api_key_raises_when_neither_env_nor_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
-        Config.require_api_key()
+        _minimal_config(api_key=None).require_api_key()
 
 
-def test_config_returns_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    assert Config.require_api_key() == "sk-test"
+def test_require_api_key_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    assert _minimal_config(api_key=None).require_api_key() == "sk-from-env"
+
+
+def test_require_api_key_from_config_when_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert _minimal_config(api_key="sk-from-config").require_api_key() == "sk-from-config"
+
+
+def test_require_api_key_env_wins_over_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    assert _minimal_config(api_key="sk-from-config").require_api_key() == "sk-from-env"
+
+
+def test_load_config_reads_optional_api_key(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        '[openai]\nmodel = "gpt-4o-transcribe"\napi_key = "sk-stored"\n'
+        '[transcription]\nvocabulary_prompt = ""\nlanguage = "en"\n'
+        "[recording]\nsample_rate = 16000\nchannels = 1\n"
+    )
+    assert load_config(cfg_path).api_key == "sk-stored"
+
+
+def test_load_config_api_key_optional(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        '[openai]\nmodel = "gpt-4o-transcribe"\n'
+        '[transcription]\nvocabulary_prompt = ""\nlanguage = "en"\n'
+        "[recording]\nsample_rate = 16000\nchannels = 1\n"
+    )
+    assert load_config(cfg_path).api_key is None
+
+
+# ----- resolve_config_path -----
+
+
+def test_resolve_config_path_env_override_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    override = tmp_path / "custom" / "config.toml"
+    monkeypatch.setenv("ECHO_CONFIG", str(override))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    # Legacy presence must NOT win over an explicit override.
+    legacy = tmp_path / "legacy.toml"
+    legacy.write_text("")
+    assert resolve_config_path(legacy_path=legacy) == override
+
+
+def test_resolve_config_path_uses_xdg(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ECHO_CONFIG", raising=False)
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    assert resolve_config_path(legacy_path=tmp_path / "no-legacy.toml") == (
+        xdg / "echo" / "config.toml"
+    )
+
+
+def test_resolve_config_path_defaults_to_home_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ECHO_CONFIG", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    assert resolve_config_path(legacy_path=tmp_path / "no-legacy.toml") == (
+        home / ".config" / "echo" / "config.toml"
+    )
+
+
+def test_resolve_config_path_prefers_legacy_repo_path_when_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Back-compat: if a config exists at the legacy repo location, keep using it."""
+    monkeypatch.delenv("ECHO_CONFIG", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    legacy = tmp_path / "repo" / "config" / "config.toml"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("")
+    assert resolve_config_path(legacy_path=legacy) == legacy
 
 
 # ----- HotkeyConfig -----
