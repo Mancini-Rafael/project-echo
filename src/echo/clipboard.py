@@ -44,6 +44,4 @@ def paste() -> None:
                 "\nGrant Accessibility permission to the app you launched `ec` from "
                 "(System Settings -> Privacy & Security -> Accessibility), then restart it."
             )
-        raise ClipboardError(
-            f"osascript paste failed with exit code {e.returncode}{detail}"
-        ) from e
+        raise ClipboardError(f"osascript paste failed with exit code {e.returncode}{detail}") from e

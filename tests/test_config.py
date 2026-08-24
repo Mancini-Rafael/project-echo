@@ -127,9 +127,7 @@ def test_resolve_config_path_env_override_wins(
     assert resolve_config_path(legacy_path=legacy) == override
 
 
-def test_resolve_config_path_uses_xdg(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_resolve_config_path_uses_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("ECHO_CONFIG", raising=False)
     xdg = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))

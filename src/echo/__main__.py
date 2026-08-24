@@ -29,6 +29,7 @@ def _config_path() -> Path:
     """Resolve at call time so $ECHO_CONFIG / env changes are honored per-run."""
     return resolve_config_path()
 
+
 # Module-level so tests can monkeypatch.
 PID_FILE = Path("/tmp/echo-daemon.pid")
 
