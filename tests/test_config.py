@@ -218,3 +218,57 @@ def test_hotkey_config_empty_chord_raises(tmp_path: Path) -> None:
     cfg_path = _write_config_with_hotkey(tmp_path, section)
     with pytest.raises(ConfigError, match="empty"):
         load_config(cfg_path)
+
+
+# ----- [local_whisper] -----
+
+_BASE_TOML = (
+    '[openai]\nmodel = "gpt-4o-transcribe"\n'
+    '[transcription]\nvocabulary_prompt = ""\nlanguage = "en"\n'
+    "[recording]\nsample_rate = 16000\nchannels = 1\n"
+)
+
+
+def test_config_local_whisper_defaults_when_section_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(_BASE_TOML)
+
+    local = load_config(cfg_path).local_whisper
+
+    assert local.binary == "whisper-cli"
+    assert local.model_path == (
+        tmp_path / ".local" / "share" / "echo" / "models" / "ggml-large-v3-turbo.bin"
+    )
+    assert local.language == "auto"
+
+
+def test_config_local_whisper_expands_tilde(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        _BASE_TOML + '[local_whisper]\nbinary = "/opt/bin/whisper-cli"\n'
+        'model_path = "~/models/ggml-base.bin"\nlanguage = "pt"\n'
+    )
+
+    local = load_config(cfg_path).local_whisper
+
+    assert local.binary == "/opt/bin/whisper-cli"
+    assert local.model_path == tmp_path / "models" / "ggml-base.bin"
+    assert local.language == "pt"
+
+
+def test_config_local_whisper_rejects_non_string_values(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(_BASE_TOML + "[local_whisper]\nlanguage = 1\n")
+
+    with pytest.raises(ConfigError, match=r"local_whisper\.language"):
+        load_config(cfg_path)
+
+
+def test_config_constructed_without_local_whisper_gets_defaults() -> None:
+    assert _minimal_config().local_whisper.binary == "whisper-cli"

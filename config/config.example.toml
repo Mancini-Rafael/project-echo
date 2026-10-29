@@ -27,3 +27,15 @@ start = "/System/Library/Sounds/Pop.aiff"
 stop = "/System/Library/Sounds/Tink.aiff"
 empty = "/System/Library/Sounds/Funk.aiff"
 success = "/System/Library/Sounds/Glass.aiff"
+
+[local_whisper]
+# Local transcription with whisper.cpp, used by `ec video`.
+# Install: brew install whisper-cpp
+binary = "whisper-cli"
+# Download a ggml model first, e.g.:
+#   mkdir -p ~/.local/share/echo/models && curl -L -o ~/.local/share/echo/models/ggml-large-v3-turbo.bin \
+#     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
+model_path = "~/.local/share/echo/models/ggml-large-v3-turbo.bin"
+# "auto" detects the spoken language; it can misdetect very short clips.
+# Use "pt", "en", etc. to pin it. `ec video --language` overrides this.
+language = "auto"

@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -23,6 +23,10 @@ _DEFAULT_SOUND_STOP = "/System/Library/Sounds/Tink.aiff"
 _DEFAULT_SOUND_EMPTY = "/System/Library/Sounds/Funk.aiff"
 _DEFAULT_SOUND_SUCCESS = "/System/Library/Sounds/Glass.aiff"
 
+_DEFAULT_WHISPER_BINARY = "whisper-cli"
+_DEFAULT_WHISPER_MODEL = "~/.local/share/echo/models/ggml-large-v3-turbo.bin"
+_DEFAULT_WHISPER_LANGUAGE = "auto"
+
 
 @dataclass(frozen=True)
 class HotkeyConfig:
@@ -31,6 +35,27 @@ class HotkeyConfig:
     sound_stop: str
     sound_empty: str
     sound_success: str
+
+
+@dataclass(frozen=True)
+class LocalWhisperConfig:
+    """Settings for local transcription with whisper.cpp (`ec video`)."""
+
+    binary: str
+    model_path: Path
+    language: str
+
+
+def _expand(path: str) -> Path:
+    return Path(os.path.expanduser(path))
+
+
+def default_local_whisper_config() -> LocalWhisperConfig:
+    return LocalWhisperConfig(
+        binary=_DEFAULT_WHISPER_BINARY,
+        model_path=_expand(_DEFAULT_WHISPER_MODEL),
+        language=_DEFAULT_WHISPER_LANGUAGE,
+    )
 
 
 @dataclass(frozen=True)
@@ -45,6 +70,7 @@ class Config:
     # env var, when set, always wins so existing shell-exported setups don't
     # silently switch to a stale stored key.
     api_key: str | None = None
+    local_whisper: LocalWhisperConfig = field(default_factory=default_local_whisper_config)
 
     def require_api_key(self) -> str:
         key = os.environ.get("OPENAI_API_KEY") or self.api_key
@@ -80,6 +106,23 @@ def _parse_hotkey(data: dict) -> HotkeyConfig:
     )
 
 
+def _parse_local_whisper(data: dict) -> LocalWhisperConfig:
+    section = data.get("local_whisper", {})
+    values = {
+        "binary": section.get("binary", _DEFAULT_WHISPER_BINARY),
+        "model_path": section.get("model_path", _DEFAULT_WHISPER_MODEL),
+        "language": section.get("language", _DEFAULT_WHISPER_LANGUAGE),
+    }
+    for key, value in values.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ConfigError(f"local_whisper.{key} must be a non-empty string")
+    return LocalWhisperConfig(
+        binary=values["binary"],
+        model_path=_expand(values["model_path"]),
+        language=values["language"],
+    )
+
+
 def load_config(path: Path, example_path: Path | None = None) -> Config:
     if not path.exists():
         if example_path is not None and example_path.exists():
@@ -103,6 +146,7 @@ def load_config(path: Path, example_path: Path | None = None) -> Config:
             channels=int(data["recording"]["channels"]),
             hotkey=_parse_hotkey(data),
             api_key=str(api_key_raw) if api_key_raw else None,
+            local_whisper=_parse_local_whisper(data),
         )
     except KeyError as e:
         raise ConfigError(f"Missing required config key: {e}") from e

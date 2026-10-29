@@ -8,10 +8,19 @@ into words for the timed transcript.
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
+import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+from echo.config import LocalWhisperConfig
 from echo.timed_transcript import Segment, TimedTranscript, Word
+
+Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class WhisperCppError(Exception):
@@ -19,6 +28,8 @@ class WhisperCppError(Exception):
 
 
 _SPECIAL_TOKEN_PREFIX = "[_"
+# whisper-cli prints its full usage text on most errors; keep only the tail.
+_STDERR_TAIL_CHARS = 2000
 
 
 @dataclass
@@ -105,3 +116,65 @@ def parse_full_json(data: dict[str, Any], *, source: str, model: str) -> TimedTr
         raise WhisperCppError(f"unexpected whisper-cli output: {e!r}") from e
 
     return TimedTranscript(source=source, language=language, model=model, segments=segments)
+
+
+# ----- running whisper-cli -----
+
+
+def build_command(
+    config: LocalWhisperConfig, wav_path: Path, out_base: Path, language: str, prompt: str
+) -> list[str]:
+    argv = [
+        config.binary,
+        "-m",
+        str(config.model_path),
+        "-f",
+        str(wav_path),
+        "-l",
+        language,
+        "-ojf",
+        "-of",
+        str(out_base),
+        "--no-prints",
+    ]
+    # Whisper treats the prompt as text that came *before* the audio, not as an
+    # instruction, so it carries the vocabulary only (flattened to one line).
+    flattened = re.sub(r"\s+", " ", prompt).strip()
+    if flattened:
+        argv += ["--prompt", flattened]
+    return argv
+
+
+def transcribe_with_timestamps(
+    *,
+    wav_path: Path,
+    config: LocalWhisperConfig,
+    language: str,
+    vocabulary_prompt: str,
+    source: str,
+    run: Runner = subprocess.run,
+) -> TimedTranscript:
+    with tempfile.TemporaryDirectory(prefix="echo-whisper-") as tmp:
+        out_base = Path(tmp) / "transcript"
+        argv = build_command(config, wav_path, out_base, language, vocabulary_prompt)
+        try:
+            completed = run(argv, check=False, capture_output=True, text=True)
+        except FileNotFoundError as e:
+            raise WhisperCppError(
+                f"{config.binary} not found. Install it with `brew install whisper-cpp` "
+                "or set local_whisper.binary in your config."
+            ) from e
+
+        if completed.returncode != 0:
+            tail = (completed.stderr or "").strip()[-_STDERR_TAIL_CHARS:]
+            raise WhisperCppError(f"whisper-cli exited with code {completed.returncode}: {tail}")
+
+        output = out_base.with_name(out_base.name + ".json")
+        if not output.exists():
+            raise WhisperCppError(f"whisper-cli produced no JSON output at {output}")
+        try:
+            data = json.loads(output.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise WhisperCppError(f"unexpected whisper-cli output: {e}") from e
+
+    return parse_full_json(data, source=source, model=config.model_path.name)
