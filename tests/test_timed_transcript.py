@@ -86,3 +86,59 @@ def test_json_marks_collapsed_word_approx() -> None:
     transcript = _transcript(Segment(start=0.0, end=3.0, text="hey", words=(word,)))
 
     assert to_json_dict(transcript)["segments"][0]["words"][0]["approx"] is True
+
+
+# ----- SRT cues built from word timings -----
+
+
+def _w(text: str, start: float, end: float) -> Word:
+    return Word(start=start, end=end, text=text, probability=0.9)
+
+
+def _cues(srt: str) -> list[tuple[str, str]]:
+    """(timing line, text) per cue."""
+    blocks = [b.split("\n") for b in srt.strip().split("\n\n")]
+    return [(lines[1], lines[2]) for lines in blocks]
+
+
+def _segment(*words: Word) -> Segment:
+    return Segment(
+        start=words[0].start,
+        end=words[-1].end,
+        text=" ".join(w.text for w in words),
+        words=words,
+    )
+
+
+def test_srt_splits_long_segment_at_42_characters() -> None:
+    words = tuple(_w(f"word{i:02d}", i * 0.2, i * 0.2 + 0.2) for i in range(12))
+    cues = _cues(to_srt(_transcript(_segment(*words))))
+
+    assert [text for _, text in cues] == [
+        "word00 word01 word02 word03 word04 word05",
+        "word06 word07 word08 word09 word10 word11",
+    ]
+    assert cues[0][0] == "00:00:00,000 --> 00:00:01,200"
+    assert cues[1][0] == "00:00:01,200 --> 00:00:02,400"
+
+
+def test_srt_starts_new_cue_after_sentence_end() -> None:
+    words = (_w("Done.", 0.0, 0.4), _w("Next", 0.5, 0.8), _w("one?", 0.8, 1.0), _w("Yes", 1.1, 1.3))
+    cues = _cues(to_srt(_transcript(_segment(*words))))
+
+    assert [text for _, text in cues] == ["Done.", "Next one?", "Yes"]
+
+
+def test_srt_splits_cue_longer_than_3_seconds() -> None:
+    words = (_w("slow", 0.0, 1.0), _w("speech", 1.5, 2.5), _w("here", 3.0, 3.5))
+    cues = _cues(to_srt(_transcript(_segment(*words))))
+
+    assert [text for _, text in cues] == ["slow speech", "here"]
+
+
+def test_srt_collapsed_cue_gets_minimum_duration_without_overlap() -> None:
+    words = (_w("basically", 65.0, 65.0), _w("exactly.", 65.0, 65.0), _w("The", 65.3, 65.5))
+    cues = _cues(to_srt(_transcript(_segment(*words))))
+
+    assert cues[0] == ("00:01:05,000 --> 00:01:05,300", "basically exactly.")
+    assert cues[1][0] == "00:01:05,300 --> 00:01:05,800"

@@ -206,7 +206,7 @@ Output (`<name>.transcript.json`, times in seconds):
 | Flag | Effect |
 |------|--------|
 | `--language LANG` | `pt`, `en`, … or `auto`; overrides `local_whisper.language` |
-| `--srt` | Also write `<name>.srt` (one cue per segment) |
+| `--srt` | Also write `<name>.srt` (subtitle cues of up to 42 chars / 3 s, built from word timings) |
 | `--verbose` | Print per-stage timings to stderr |
 
 Configure the binary, model path, and default language under

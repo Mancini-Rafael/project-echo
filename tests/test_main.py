@@ -249,7 +249,11 @@ def test_video_srt_flag_writes_srt(video_env) -> None:
 
     assert main_mod.main(argv=["video", str(video), "--srt"]) == 0
 
-    assert (video.parent / "clip.srt").read_text().startswith("1\n00:00:00,000 --> 00:00:01,000")
+    assert (
+        (video.parent / "clip.srt")
+        .read_text()
+        .startswith("1\n00:00:00,100 --> 00:00:00,600\nhello")
+    )
 
 
 def test_video_uses_config_language_by_default(video_env) -> None:
