@@ -11,10 +11,13 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-import sounddevice as sd
 import soundfile as sf
+
+if TYPE_CHECKING:
+    import sounddevice as sd
 
 
 class RecorderError(Exception):
@@ -62,6 +65,15 @@ class RecordingSession:
     def start(self) -> None:
         if self._stream is not None:
             raise RecorderError("RecordingSession already started")
+        # Imported here, not at module level: sounddevice loads the PortAudio
+        # system library on import, and commands that never record (`ec video`)
+        # must not depend on it.
+        try:
+            import sounddevice as sd
+        except OSError as e:
+            raise RecorderError(
+                f"Audio input unavailable: {e}. Install it with `brew install portaudio`."
+            ) from e
         try:
             self._stream = sd.InputStream(
                 samplerate=self._sample_rate,
