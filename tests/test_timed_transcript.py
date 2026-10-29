@@ -2,7 +2,9 @@ from echo.timed_transcript import Segment, TimedTranscript, Word, to_json_dict, 
 
 
 def _transcript(*segments: Segment) -> TimedTranscript:
-    return TimedTranscript(source="clip.mp4", language="en", model="ggml-base.bin", segments=segments)
+    return TimedTranscript(
+        source="clip.mp4", language="en", model="ggml-base.bin", segments=segments
+    )
 
 
 def test_to_json_dict_shape() -> None:
