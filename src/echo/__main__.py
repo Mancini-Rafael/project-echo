@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import select
+import shutil
 import signal
+import stat
 import sys
+import tempfile
 import termios
 import time
 import tty
@@ -15,11 +19,14 @@ from pathlib import Path
 from openai import OpenAI
 
 from echo.clipboard import ClipboardError, copy_to_clipboard, paste
-from echo.config import ConfigError, load_config, resolve_config_path
+from echo.config import Config, ConfigError, load_config, resolve_config_path
 from echo.daemon import Daemon
+from echo.media import MediaError, extract_audio
 from echo.recorder import RecorderError, RecordingSession
+from echo.timed_transcript import TimedTranscript, to_json_dict, to_srt
 from echo.transcriber import TranscriberError, transcribe
 from echo.ui import format_error, format_recording_line, format_transcription
+from echo.whisper_cpp import WhisperCppError, transcribe_with_timestamps
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_PATH = REPO_ROOT / "config" / "config.example.toml"
@@ -71,6 +78,22 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("stop", help="Stop a running daemon")
+
+    video_p = sub.add_parser(
+        "video",
+        help="Transcribe a video's audio locally with whisper.cpp (timestamped JSON)",
+    )
+    video_p.add_argument("path", type=Path, help="video (or audio) file to transcribe")
+    video_p.add_argument(
+        "--language",
+        help="spoken language code (e.g. pt, en) or 'auto'; overrides local_whisper.language",
+    )
+    video_p.add_argument(
+        "--srt", action="store_true", help="also write <name>.srt next to the input"
+    )
+    video_p.add_argument(
+        "--verbose", action="store_true", help="print per-stage timing breakdown to stderr"
+    )
 
     return parser
 
@@ -321,6 +344,134 @@ def _run_stop() -> int:
     return 0
 
 
+# ===== ec video =====
+
+
+def _target_mode(path: Path) -> int:
+    if path.exists():
+        return stat.S_IMODE(path.stat().st_mode)
+    umask = os.umask(0)
+    os.umask(umask)
+    return 0o666 & ~umask
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Write via a temp file in the same directory + os.replace.
+
+    A crash or Ctrl-C mid-write leaves the previous file intact instead of a
+    half-written transcript an editing tool would then choke on.
+    """
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        # mkstemp creates 0600 files; keep the mode a plain write would have had.
+        os.chmod(tmp_name, _target_mode(path))
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+def _video_preflight(cfg: Config) -> str | None:
+    """Return an actionable error before spending minutes on extraction, or None."""
+    local = cfg.local_whisper
+    if shutil.which(local.binary) is None:
+        return (
+            f"{local.binary} not found. Install it with `brew install whisper-cpp` "
+            "or set local_whisper.binary in your config."
+        )
+    if not local.model_path.is_file():
+        return (
+            f"whisper model not found at {local.model_path}. Download a ggml model there "
+            "or set local_whisper.model_path in your config."
+        )
+    if shutil.which("ffmpeg") is None:
+        return "ffmpeg not found. Install it with `brew install ffmpeg`."
+    return None
+
+
+def _write_video_outputs(video: Path, transcript: TimedTranscript, *, srt: bool) -> list[Path]:
+    json_path = video.with_name(f"{video.stem}.transcript.json")
+    _write_atomic(json_path, json.dumps(to_json_dict(transcript), ensure_ascii=False, indent=2))
+    written = [json_path]
+    if srt:
+        srt_path = video.with_name(f"{video.stem}.srt")
+        _write_atomic(srt_path, to_srt(transcript))
+        written.append(srt_path)
+    return written
+
+
+def _keep_or_discard_wav(wav_path: Path, extracted: bool) -> None:
+    """Keep the extracted audio for retries/debugging; drop a partial one."""
+    if extracted:
+        sys.stderr.write(f"  WAV kept at: {wav_path}\n")
+    else:
+        wav_path.unlink(missing_ok=True)
+
+
+def _run_video(args: argparse.Namespace) -> int:
+    video: Path = args.path.expanduser()
+    if not video.is_file():
+        sys.stderr.write(format_error(f"file not found: {video}") + "\n")
+        return 2
+
+    try:
+        cfg = load_config(_config_path(), example_path=EXAMPLE_PATH)
+    except ConfigError as e:
+        sys.stderr.write(format_error(str(e)) + "\n")
+        return 1
+
+    problem = _video_preflight(cfg)
+    if problem:
+        sys.stderr.write(format_error(problem) + "\n")
+        return 1
+
+    fd, wav_name = tempfile.mkstemp(prefix="echo-video-", suffix=".wav")
+    os.close(fd)
+    wav_path = Path(wav_name)
+    language = args.language or cfg.local_whisper.language
+
+    extracted = False
+    try:
+        sys.stderr.write(f"✓ Extracting audio from {video.name}...\n")
+        t0 = time.monotonic()
+        extract_audio(video, wav_path)
+        extracted = True
+        t1 = time.monotonic()
+        sys.stderr.write(f"✓ Transcribing locally ({cfg.local_whisper.model_path.name})...\n")
+        transcript = transcribe_with_timestamps(
+            wav_path=wav_path,
+            config=cfg.local_whisper,
+            language=language,
+            vocabulary_prompt=cfg.vocabulary_prompt,
+            source=video.name,
+        )
+        t2 = time.monotonic()
+        written = _write_video_outputs(video, transcript, srt=args.srt)
+    except (MediaError, WhisperCppError, OSError) as e:
+        sys.stderr.write(format_error(str(e)) + "\n")
+        _keep_or_discard_wav(wav_path, extracted)
+        return 1
+    except KeyboardInterrupt:
+        sys.stderr.write("\n")
+        _keep_or_discard_wav(wav_path, extracted)
+        return 130
+
+    wav_path.unlink(missing_ok=True)
+    if not transcript.segments:
+        sys.stderr.write("warning: no speech detected; wrote an empty transcript\n")
+    for path in written:
+        print(path)
+
+    if args.verbose:
+        sys.stderr.write(
+            f"  timings: extract={t1 - t0:.2f}s transcribe={t2 - t1:.2f}s "
+            f"segments={len(transcript.segments)} language={transcript.language}\n"
+        )
+    return 0
+
+
 # ===== entry point =====
 
 
@@ -332,6 +483,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_listen(args)
     if args.command == "stop":
         return _run_stop()
+    if args.command == "video":
+        return _run_video(args)
     return _run_oneshot(args)
 
 

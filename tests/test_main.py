@@ -176,3 +176,242 @@ def test_main_listen_cleans_stale_pid_file(mocker, tmp_path: Path, fake_config: 
     assert exit_code == 0
     # The PID file should have been cleaned up at end (released).
     assert not pid_file.exists()
+
+
+# ----- ec video -----
+
+
+def _transcript():
+    from echo.timed_transcript import Segment, TimedTranscript, Word
+
+    return TimedTranscript(
+        source="clip.mp4",
+        language="en",
+        model="ggml-base.bin",
+        segments=(
+            Segment(
+                start=0.0,
+                end=1.0,
+                text="hello",
+                words=(Word(start=0.1, end=0.5, text="hello", probability=0.9),),
+            ),
+        ),
+    )
+
+
+@pytest.fixture
+def video_env(mocker, tmp_path: Path, fake_config: Config):
+    """A video file, a model file, and every external boundary mocked."""
+    import dataclasses
+
+    from echo import __main__ as main_mod
+
+    model = tmp_path / "ggml-base.bin"
+    model.write_bytes(b"model")
+    config = dataclasses.replace(
+        fake_config,
+        local_whisper=dataclasses.replace(fake_config.local_whisper, model_path=model),
+    )
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"\x00")
+    # Keep the temp WAV inside tmp_path instead of the real system temp dir.
+    temp_dir = tmp_path / "tmp"
+    temp_dir.mkdir()
+    mocker.patch.object(main_mod.tempfile, "tempdir", str(temp_dir))
+
+    mocker.patch.object(main_mod, "load_config", return_value=config)
+    mocker.patch.object(main_mod.shutil, "which", side_effect=lambda name: f"/usr/bin/{name}")
+    extract = mocker.patch.object(
+        main_mod, "extract_audio", side_effect=lambda _v, wav, **_k: wav.write_bytes(b"RIFF")
+    )
+    transcribe = mocker.patch.object(
+        main_mod, "transcribe_with_timestamps", return_value=_transcript()
+    )
+    return main_mod, video, extract, transcribe
+
+
+def test_video_writes_json_next_to_input(video_env, capsys) -> None:
+    import json
+
+    main_mod, video, _extract, _transcribe = video_env
+
+    assert main_mod.main(argv=["video", str(video)]) == 0
+
+    out = video.parent / "clip.transcript.json"
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["segments"][0]["words"][0]["text"] == "hello"
+    assert str(out) in capsys.readouterr().out
+    assert not (video.parent / "clip.srt").exists()
+
+
+def test_video_srt_flag_writes_srt(video_env) -> None:
+    main_mod, video, _extract, _transcribe = video_env
+
+    assert main_mod.main(argv=["video", str(video), "--srt"]) == 0
+
+    assert (video.parent / "clip.srt").read_text().startswith("1\n00:00:00,000 --> 00:00:01,000")
+
+
+def test_video_uses_config_language_by_default(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+
+    main_mod.main(argv=["video", str(video)])
+
+    assert transcribe.call_args.kwargs["language"] == "auto"
+
+
+def test_video_language_flag_overrides_config(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+
+    main_mod.main(argv=["video", str(video), "--language", "pt"])
+
+    assert transcribe.call_args.kwargs["language"] == "pt"
+
+
+def test_video_missing_whisper_cli_fails_before_extraction(mocker, video_env, capsys) -> None:
+    main_mod, video, extract, _transcribe = video_env
+    mocker.patch.object(
+        main_mod.shutil, "which", side_effect=lambda n: None if n == "whisper-cli" else n
+    )
+
+    assert main_mod.main(argv=["video", str(video)]) == 1
+
+    assert "brew install whisper-cpp" in capsys.readouterr().err
+    extract.assert_not_called()
+
+
+def test_video_missing_ffmpeg_fails_before_extraction(mocker, video_env, capsys) -> None:
+    main_mod, video, extract, _transcribe = video_env
+    mocker.patch.object(
+        main_mod.shutil, "which", side_effect=lambda n: None if n == "ffmpeg" else n
+    )
+
+    assert main_mod.main(argv=["video", str(video)]) == 1
+
+    assert "brew install ffmpeg" in capsys.readouterr().err
+    extract.assert_not_called()
+
+
+def test_video_missing_model_fails_before_extraction(video_env, capsys) -> None:
+    main_mod, video, extract, _transcribe = video_env
+    model = video.parent / "ggml-base.bin"
+    model.unlink()
+
+    assert main_mod.main(argv=["video", str(video)]) == 1
+
+    assert str(model) in capsys.readouterr().err
+    extract.assert_not_called()
+
+
+def test_video_nonexistent_path_exit_2(video_env) -> None:
+    main_mod, video, extract, _transcribe = video_env
+
+    assert main_mod.main(argv=["video", str(video.parent / "missing.mp4")]) == 2
+    extract.assert_not_called()
+
+
+def test_video_does_not_require_openai_key(video_env, monkeypatch) -> None:
+    main_mod, video, _extract, _transcribe = video_env
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    assert main_mod.main(argv=["video", str(video)]) == 0
+
+
+def test_video_failure_keeps_previous_transcript_and_wav(video_env, capsys) -> None:
+    from echo.whisper_cpp import WhisperCppError
+
+    main_mod, video, _extract, transcribe = video_env
+    previous = video.parent / "clip.transcript.json"
+    previous.write_text('{"old": true}')
+    transcribe.side_effect = WhisperCppError("decoder exploded")
+
+    assert main_mod.main(argv=["video", str(video)]) == 1
+
+    assert previous.read_text() == '{"old": true}'
+    err = capsys.readouterr().err
+    assert "decoder exploded" in err
+    kept = Path(err.split("WAV kept at: ")[1].strip())
+    assert kept.exists()
+
+
+def test_video_media_error_exit_1(video_env, capsys) -> None:
+    from echo.media import MediaError
+
+    main_mod, video, extract, transcribe = video_env
+    extract.side_effect = MediaError("no audio stream in clip.mp4")
+
+    assert main_mod.main(argv=["video", str(video)]) == 1
+
+    err = capsys.readouterr().err
+    assert "no audio stream" in err
+    assert "WAV kept at" not in err
+    assert list((video.parent / "tmp").iterdir()) == []
+    transcribe.assert_not_called()
+
+
+def test_video_success_removes_temp_wav(video_env) -> None:
+    main_mod, video, extract, _transcribe = video_env
+
+    main_mod.main(argv=["video", str(video)])
+
+    wav = extract.call_args.args[1]
+    assert not wav.exists()
+
+
+def test_video_rerun_overwrites_transcript(video_env) -> None:
+    main_mod, video, _extract, _transcribe = video_env
+    out = video.parent / "clip.transcript.json"
+    out.write_text("stale")
+
+    assert main_mod.main(argv=["video", str(video)]) == 0
+
+    assert out.read_text() != "stale"
+    assert [p.name for p in video.parent.iterdir() if p.name.startswith(".clip")] == []
+
+
+def test_video_keyboard_interrupt_exit_130(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+    transcribe.side_effect = KeyboardInterrupt
+
+    assert main_mod.main(argv=["video", str(video)]) == 130
+
+
+def test_video_no_speech_still_writes_json_and_warns(video_env, capsys) -> None:
+    import dataclasses
+
+    main_mod, video, _extract, transcribe = video_env
+    transcribe.return_value = dataclasses.replace(_transcript(), segments=())
+
+    assert main_mod.main(argv=["video", str(video)]) == 0
+
+    err = capsys.readouterr().err
+    assert "warning: no speech detected" in err
+    assert "✗" not in err
+    assert (video.parent / "clip.transcript.json").exists()
+
+
+def test_video_rerun_keeps_existing_file_permissions(video_env) -> None:
+    import stat
+
+    main_mod, video, _extract, _transcribe = video_env
+    out = video.parent / "clip.transcript.json"
+    out.write_text("stale")
+    out.chmod(0o644)
+
+    main_mod.main(argv=["video", str(video)])
+
+    assert stat.S_IMODE(out.stat().st_mode) == 0o644
+
+
+def test_video_new_file_uses_umask_permissions(video_env) -> None:
+    import os
+    import stat
+
+    main_mod, video, _extract, _transcribe = video_env
+    old = os.umask(0o022)
+    try:
+        main_mod.main(argv=["video", str(video)])
+    finally:
+        os.umask(old)
+
+    assert stat.S_IMODE((video.parent / "clip.transcript.json").stat().st_mode) == 0o644

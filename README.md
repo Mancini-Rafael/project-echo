@@ -159,6 +159,86 @@ transcription is still on your clipboard for manual pasting.
 The Accessibility permission required for the global hotkey already covers the
 paste simulation — no additional setup needed.
 
+### Usage (video → timestamped transcript, local)
+
+`ec video` transcribes a video's audio **locally** with
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp) and writes a transcript
+with segment- and word-level timestamps, meant as input for an AI video-editing
+flow. No API key, no upload, no file-size limit.
+
+One-time setup:
+
+```sh
+brew install ffmpeg whisper-cpp
+mkdir -p ~/.local/share/echo/models
+curl -L -o ~/.local/share/echo/models/ggml-large-v3-turbo.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
+```
+
+Run it:
+
+```sh
+uv run ec video ~/Movies/take-03.mp4            # → take-03.transcript.json
+uv run ec video ~/Movies/take-03.mp4 --srt      # also → take-03.srt
+uv run ec video reuniao.mp4 --language pt --verbose
+```
+
+Output (`<name>.transcript.json`, times in seconds):
+
+```json
+{
+  "source": "take-03.mp4",
+  "language": "en",
+  "model": "ggml-large-v3-turbo.bin",
+  "segments": [
+    {
+      "start": 0.0, "end": 10.6,
+      "text": "And so my fellow Americans, ask not ...",
+      "words": [
+        {"start": 0.32, "end": 0.4, "text": "And", "probability": 0.675},
+        {"start": 1.75, "end": 2.11, "text": "Americans,", "probability": 0.904}
+      ]
+    }
+  ]
+}
+```
+
+| Flag | Effect |
+|------|--------|
+| `--language LANG` | `pt`, `en`, … or `auto`; overrides `local_whisper.language` |
+| `--srt` | Also write `<name>.srt` (one cue per segment) |
+| `--verbose` | Print per-stage timings to stderr |
+
+Configure the binary, model path, and default language under
+`[local_whisper]` in your config. The `[transcription] vocabulary_prompt` list
+is passed to whisper as a prompt to bias spelling of jargon and names.
+
+Behavior worth knowing:
+
+- Audio is the **first audio stream** of the input, converted to 16 kHz mono.
+  Audio files work too.
+- Outputs are written atomically and re-running overwrites them, so an
+  interrupted run never leaves a half-written transcript.
+- A video with no audio stream fails with `no audio stream in <file>`.
+  Silence produces a valid transcript with `"segments": []` and a warning.
+- If transcription fails after extraction, the WAV is kept and its path printed.
+
+Known limits:
+
+- **Word timestamps are approximate** (whisper token timing). Punctuation never
+  moves a word's timing, so pauses stay visible. But around silence whisper can
+  misplace words: with 3 s of leading silence, the first words were stamped
+  *inside* the silence, and after long gaps several words can collapse onto the
+  same instant. Don't cut on word boundaries blindly; leave a margin.
+- **Word splitting assumes spaces between words.** For Japanese, Chinese or
+  Thai, a whole segment comes out as one "word".
+- **Only the first audio track is used.** Multi-track recordings (e.g. mic on
+  track 2) need re-muxing first.
+- **Whisper can hallucinate on silence or music** (e.g. a stray "Thank you.").
+  There is no VAD filtering yet.
+- **`auto` language detection** can misfire on very short clips; pin
+  `--language` when you know it.
+
 ## How does it work?
 
 End-to-end pipeline for a single recording:
@@ -255,7 +335,10 @@ project-echo/
 │   ├── hotkey.py           # chord parsing + ChordDetector
 │   ├── recorder.py         # RecordingSession (thread-friendly mic capture)
 │   ├── sounds.py           # afplay wrapper
+│   ├── media.py            # ffmpeg audio extraction for `ec video`
+│   ├── timed_transcript.py # timestamped transcript types + JSON/SRT output
 │   ├── transcriber.py      # OpenAI client wrapper + vocab-echo guard
+│   ├── whisper_cpp.py      # whisper-cli runner + token→word timestamp parser
 │   └── ui.py               # terminal status formatters
 └── tests/                  # pytest, no real network or hardware
 ```
@@ -338,7 +421,8 @@ A few notes if you're sending a pull request:
 ### Local LLM — later
 
 - [ ] Pluggable transcription backend behind a thin interface
-- [ ] Local Whisper (`faster-whisper` or `whisper.cpp`) implementation
+- [x] Local Whisper (`whisper.cpp`) for timestamped video transcription (`ec video`)
+- [ ] Local Whisper for dictation (`ec`, `ec listen`)
 - [ ] Config switch to choose between OpenAI and local
 - [ ] Benchmark latency and accuracy against the OpenAI default
 - [ ] Optional offline mode (no network calls at all)
