@@ -463,3 +463,144 @@ def test_video_vocabulary_flag_overrides_config_false(video_env) -> None:
     main_mod.main(argv=["video", str(video), "--vocabulary"])
 
     assert transcribe.call_args.kwargs["vocabulary_prompt"] == "foo"
+
+
+# ----- dictation backend + vocabulary flags -----
+
+
+def _local_ready(mocker, main_mod, config: Config, tmp_path: Path) -> Config:
+    """Config whose local whisper binary and model 'exist'."""
+    import dataclasses
+
+    model = tmp_path / "ggml-base.bin"
+    model.write_bytes(b"model")
+    config = dataclasses.replace(
+        config,
+        local_whisper=dataclasses.replace(config.local_whisper, model_path=model),
+    )
+    mocker.patch.object(main_mod, "load_config", return_value=config)
+    mocker.patch.object(main_mod.shutil, "which", side_effect=lambda name: f"/usr/bin/{name}")
+    return config
+
+
+def test_oneshot_defaults_to_openai_with_vocabulary(mocker, tmp_path: Path, fake_config) -> None:
+    from echo import __main__ as main_mod
+
+    mocker.patch.object(main_mod, "load_config", return_value=fake_config)
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
+    _patch_session_with_recording(mocker, main_mod, tmp_path)
+    openai_cls = mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
+    transcribe = mocker.patch.object(main_mod, "transcribe", return_value="hi")
+    mocker.patch.object(main_mod, "copy_to_clipboard")
+
+    assert main_mod.main(argv=[]) == 0
+
+    openai_cls.assert_called_once_with(api_key="sk-test")
+    assert transcribe.call_args.kwargs["vocabulary_prompt"] == "foo"
+
+
+def test_oneshot_no_vocabulary_sends_empty_prompt(mocker, tmp_path: Path, fake_config) -> None:
+    from echo import __main__ as main_mod
+
+    mocker.patch.object(main_mod, "load_config", return_value=fake_config)
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
+    _patch_session_with_recording(mocker, main_mod, tmp_path)
+    mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
+    transcribe = mocker.patch.object(main_mod, "transcribe", return_value="hi")
+    mocker.patch.object(main_mod, "copy_to_clipboard")
+
+    assert main_mod.main(argv=["--no-vocabulary"]) == 0
+
+    assert transcribe.call_args.kwargs["vocabulary_prompt"] == ""
+
+
+def test_oneshot_local_backend_skips_openai_and_api_key(
+    mocker, tmp_path: Path, fake_config, monkeypatch
+) -> None:
+    from echo import __main__ as main_mod
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    config = _local_ready(mocker, main_mod, fake_config, tmp_path)
+    _patch_session_with_recording(mocker, main_mod, tmp_path)
+    openai_cls = mocker.patch.object(main_mod, "OpenAI")
+    openai_transcribe = mocker.patch.object(main_mod, "transcribe")
+    local_fn = MagicMock(return_value="local text")
+    factory = mocker.patch.object(main_mod, "local_transcribe_fn", return_value=local_fn)
+    copy = mocker.patch.object(main_mod, "copy_to_clipboard")
+
+    assert main_mod.main(argv=["--backend", "local"]) == 0
+
+    factory.assert_called_once_with(config.local_whisper)
+    assert local_fn.call_args.kwargs["language"] == "en"
+    openai_cls.assert_not_called()
+    openai_transcribe.assert_not_called()
+    copy.assert_called_once_with("local text")
+
+
+def test_oneshot_local_backend_missing_whisper_fails_before_recording(
+    mocker, tmp_path: Path, fake_config, capsys
+) -> None:
+    from echo import __main__ as main_mod
+
+    _local_ready(mocker, main_mod, fake_config, tmp_path)
+    mocker.patch.object(
+        main_mod.shutil, "which", side_effect=lambda n: None if n == "whisper-cli" else n
+    )
+    session_cls = mocker.patch.object(main_mod, "RecordingSession")
+
+    assert main_mod.main(argv=["--backend", "local"]) == 1
+
+    assert "brew install whisper-cpp" in capsys.readouterr().err
+    session_cls.assert_not_called()
+
+
+def test_listen_local_backend_builds_daemon_without_openai(
+    mocker, tmp_path: Path, fake_config, monkeypatch
+) -> None:
+    from echo import __main__ as main_mod
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    config = _local_ready(mocker, main_mod, fake_config, tmp_path)
+    openai_cls = mocker.patch.object(main_mod, "OpenAI")
+    local_fn = MagicMock()
+    mocker.patch.object(main_mod, "local_transcribe_fn", return_value=local_fn)
+    daemon_cls = mocker.patch.object(main_mod, "Daemon")
+    daemon_cls.return_value.run.return_value = 0
+    mocker.patch.object(main_mod, "_acquire_pid_file")
+    mocker.patch.object(main_mod, "_release_pid_file")
+
+    assert main_mod.main(argv=["listen", "--backend", "local"]) == 0
+
+    kwargs = daemon_cls.call_args.kwargs
+    assert kwargs["openai_client"] is None
+    assert kwargs["transcribe_fn"] is local_fn
+    assert kwargs["config"].vocabulary_prompt == config.vocabulary_prompt
+    openai_cls.assert_not_called()
+
+
+def test_listen_no_vocabulary_blanks_prompt_for_daemon(mocker, fake_config) -> None:
+    from echo import __main__ as main_mod
+
+    mocker.patch.object(main_mod, "load_config", return_value=fake_config)
+    mocker.patch.object(Config, "require_api_key", return_value="sk-test")
+    mocker.patch.object(main_mod, "OpenAI", return_value=MagicMock())
+    daemon_cls = mocker.patch.object(main_mod, "Daemon")
+    daemon_cls.return_value.run.return_value = 0
+    mocker.patch.object(main_mod, "_acquire_pid_file")
+    mocker.patch.object(main_mod, "_release_pid_file")
+
+    assert main_mod.main(argv=["listen", "--no-vocabulary"]) == 0
+
+    kwargs = daemon_cls.call_args.kwargs
+    assert kwargs["config"].vocabulary_prompt == ""
+    assert kwargs["transcribe_fn"] is main_mod.transcribe
+
+
+def test_backend_flag_rejects_unknown_value(capsys) -> None:
+    from echo import __main__ as main_mod
+
+    with pytest.raises(SystemExit) as exc:
+        main_mod.main(argv=["--backend", "azure"])
+
+    assert exc.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err

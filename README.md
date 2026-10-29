@@ -141,6 +141,26 @@ To restart cleanly: `uv run ec stop && uv run ec listen`.
 | `ec listen`   | `--verbose` | Print per-recording timings                                       |
 | `ec listen`   | `--force`   | Overwrite an existing PID file                                    |
 | `ec listen`   | `--auto-paste` | Simulate Cmd+V after transcription to paste into the focused app |
+| `ec`, `ec listen` | `--backend openai\|local` | Transcribe with OpenAI (default) or local whisper.cpp |
+| `ec`, `ec listen` | `--no-vocabulary` | Don't send `vocabulary_prompt` (default: send it) |
+
+#### Local dictation (no API key)
+
+`--backend local` runs dictation through the same local whisper.cpp setup as
+`ec video` (see [Usage (video → timestamped transcript, local)](#usage-video--timestamped-transcript-local)
+for installing `whisper-cpp` and a model). No API key is needed and nothing
+leaves your machine.
+
+```sh
+uv run ec --backend local
+uv run ec listen --backend local --no-vocabulary
+```
+
+Trade-offs versus OpenAI: each recording loads the model from disk, so expect
+an extra second or more per press (a 12 s clip took ~1.3 s with `base.en` on
+CPU; larger models are slower but more accurate), and whisper treats the
+vocabulary as preceding speech rather than instructions, so try
+`--no-vocabulary` if names come out wrong.
 
 #### Auto-paste
 
@@ -426,10 +446,11 @@ A few notes if you're sending a pull request:
 
 ### Local LLM — later
 
-- [ ] Pluggable transcription backend behind a thin interface
+- [x] Pluggable transcription backend behind a thin interface
 - [x] Local Whisper (`whisper.cpp`) for timestamped video transcription (`ec video`)
-- [ ] Local Whisper for dictation (`ec`, `ec listen`)
-- [ ] Config switch to choose between OpenAI and local
+- [x] Local Whisper for dictation (`ec --backend local`, `ec listen --backend local`)
+- [ ] Config switch to choose between OpenAI and local (flag only for now)
+- [ ] Keep the local model warm in `ec listen` to cut per-press latency
 - [ ] Benchmark latency and accuracy against the OpenAI default
 - [ ] Optional offline mode (no network calls at all)
 

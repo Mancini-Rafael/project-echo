@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import select
@@ -15,9 +16,11 @@ import termios
 import time
 import tty
 from pathlib import Path
+from typing import Any
 
 from openai import OpenAI
 
+from echo.backends import BACKENDS, TranscribeFn, local_transcribe_fn
 from echo.clipboard import ClipboardError, copy_to_clipboard, paste
 from echo.config import Config, ConfigError, load_config, resolve_config_path
 from echo.daemon import Daemon
@@ -44,10 +47,25 @@ PID_FILE = Path("/tmp/echo-daemon.pid")
 # ===== argparse =====
 
 
+def _add_dictation_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--backend",
+        choices=BACKENDS,
+        default="openai",
+        help="transcribe with OpenAI (default) or local whisper.cpp (no API key, slower)",
+    )
+    parser.add_argument(
+        "--vocabulary",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="send [transcription] vocabulary_prompt with each transcription (default: on)",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ec",
-        description="Record audio, transcribe via OpenAI, copy to clipboard.",
+        description="Record audio, transcribe (OpenAI or local whisper), copy to clipboard.",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -60,11 +78,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--verbose", action="store_true", help="print per-stage timing breakdown to stderr"
     )
+    _add_dictation_flags(parser)
 
     listen_p = sub.add_parser("listen", help="Run the global hotkey daemon")
     listen_p.add_argument(
         "--verbose", action="store_true", help="print per-recording timing breakdown"
     )
+    _add_dictation_flags(listen_p)
     listen_p.add_argument(
         "--force",
         action="store_true",
@@ -153,6 +173,25 @@ def _release_pid_file() -> None:
         pass
 
 
+# ===== dictation backend =====
+
+
+def _dictation_backend(args: argparse.Namespace, cfg: Config) -> tuple[Config, Any, TranscribeFn]:
+    """Resolve --backend / --vocabulary into (config, openai client, transcribe fn).
+
+    Raises ConfigError before any recording starts, so a missing API key or
+    model fails immediately instead of after the user has spoken.
+    """
+    if not args.vocabulary:
+        cfg = dataclasses.replace(cfg, vocabulary_prompt="")
+    if args.backend == "local":
+        problem = _local_whisper_problem(cfg)
+        if problem:
+            raise ConfigError(problem)
+        return cfg, None, local_transcribe_fn(cfg.local_whisper)
+    return cfg, OpenAI(api_key=cfg.require_api_key()), transcribe
+
+
 # ===== one-shot recording (existing behavior) =====
 
 
@@ -189,7 +228,7 @@ def _run_oneshot(args: argparse.Namespace) -> int:
 
     try:
         cfg = load_config(_config_path(), example_path=EXAMPLE_PATH)
-        api_key = cfg.require_api_key()
+        cfg, client, transcribe_fn = _dictation_backend(args, cfg)
     except ConfigError as e:
         sys.stderr.write(format_error(str(e)) + "\n")
         return 1
@@ -228,8 +267,7 @@ def _run_oneshot(args: argparse.Namespace) -> int:
 
     try:
         t1 = time.monotonic()
-        client = OpenAI(api_key=api_key)
-        text = transcribe(
+        text = transcribe_fn(
             client=client,
             wav_path=recording.wav_path,
             model=cfg.model,
@@ -277,7 +315,7 @@ def _run_oneshot(args: argparse.Namespace) -> int:
 def _run_listen(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(_config_path(), example_path=EXAMPLE_PATH)
-        api_key = cfg.require_api_key()
+        cfg, client, transcribe_fn = _dictation_backend(args, cfg)
     except ConfigError as e:
         sys.stderr.write(format_error(str(e)) + "\n")
         return 1
@@ -289,9 +327,10 @@ def _run_listen(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        client = OpenAI(api_key=api_key)
         paste_fn = paste if args.auto_paste else None
-        daemon = Daemon(config=cfg, openai_client=client, paste_fn=paste_fn)
+        daemon = Daemon(
+            config=cfg, openai_client=client, transcribe_fn=transcribe_fn, paste_fn=paste_fn
+        )
         return daemon.run()
     finally:
         _release_pid_file()
@@ -380,8 +419,8 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
-def _video_preflight(cfg: Config) -> str | None:
-    """Return an actionable error before spending minutes on extraction, or None."""
+def _local_whisper_problem(cfg: Config) -> str | None:
+    """Actionable error if the local whisper binary or model is missing, else None."""
     local = cfg.local_whisper
     if shutil.which(local.binary) is None:
         return (
@@ -393,6 +432,14 @@ def _video_preflight(cfg: Config) -> str | None:
             f"whisper model not found at {local.model_path}. Download a ggml model there "
             "or set local_whisper.model_path in your config."
         )
+    return None
+
+
+def _video_preflight(cfg: Config) -> str | None:
+    """Return an actionable error before spending minutes on extraction, or None."""
+    problem = _local_whisper_problem(cfg)
+    if problem:
+        return problem
     if shutil.which("ffmpeg") is None:
         return "ffmpeg not found. Install it with `brew install ffmpeg`."
     return None
