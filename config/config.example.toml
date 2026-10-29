@@ -39,3 +39,8 @@ model_path = "~/.local/share/echo/models/ggml-large-v3-turbo.bin"
 # "auto" detects the spoken language; it can misdetect very short clips.
 # Use "pt", "en", etc. to pin it. `ec video --language` overrides this.
 language = "auto"
+# Send [transcription] vocabulary_prompt to whisper. Whisper treats the prompt
+# as preceding speech, so a long list of names can make it mishear or repeat
+# words; set false if transcripts get worse. Dictation (`ec`, `ec listen`) is
+# not affected. `ec video --vocabulary / --no-vocabulary` overrides this.
+use_vocabulary = true

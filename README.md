@@ -207,11 +207,16 @@ Output (`<name>.transcript.json`, times in seconds):
 |------|--------|
 | `--language LANG` | `pt`, `en`, … or `auto`; overrides `local_whisper.language` |
 | `--srt` | Also write `<name>.srt` (subtitle cues of up to 42 chars / 3 s, built from word timings) |
+| `--vocabulary` / `--no-vocabulary` | Send (or skip) your vocabulary prompt for this run; overrides `local_whisper.use_vocabulary` |
 | `--verbose` | Print per-stage timings to stderr |
 
 Configure the binary, model path, and default language under
 `[local_whisper]` in your config. The `[transcription] vocabulary_prompt` list
-is passed to whisper as a prompt to bias spelling of jargon and names.
+is passed to whisper as a prompt to bias spelling of jargon and names. Whisper
+reads that prompt as speech that came before the audio, so a long list can
+backfire (on one test recording it caused misheard words and a repeated
+phrase). Turn it off with `use_vocabulary = false` under `[local_whisper]`, or
+per run with `--no-vocabulary`; dictation keeps using it either way.
 
 Behavior worth knowing:
 

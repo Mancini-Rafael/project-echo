@@ -44,6 +44,10 @@ class LocalWhisperConfig:
     binary: str
     model_path: Path
     language: str
+    # Whether `ec video` passes [transcription] vocabulary_prompt to whisper.
+    # Whisper reads a prompt as preceding speech, so a long list of names can
+    # bias it into mishearing or repeating words; dictation is unaffected.
+    use_vocabulary: bool = True
 
 
 def _expand(path: str) -> Path:
@@ -116,10 +120,14 @@ def _parse_local_whisper(data: dict) -> LocalWhisperConfig:
     for key, value in values.items():
         if not isinstance(value, str) or not value.strip():
             raise ConfigError(f"local_whisper.{key} must be a non-empty string")
+    use_vocabulary = section.get("use_vocabulary", True)
+    if not isinstance(use_vocabulary, bool):
+        raise ConfigError("local_whisper.use_vocabulary must be true or false")
     return LocalWhisperConfig(
         binary=values["binary"],
         model_path=_expand(values["model_path"]),
         language=values["language"],
+        use_vocabulary=use_vocabulary,
     )
 
 

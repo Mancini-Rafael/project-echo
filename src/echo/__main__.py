@@ -92,6 +92,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--srt", action="store_true", help="also write <name>.srt next to the input"
     )
     video_p.add_argument(
+        "--vocabulary",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="send [transcription] vocabulary_prompt to whisper; "
+        "overrides local_whisper.use_vocabulary",
+    )
+    video_p.add_argument(
         "--verbose", action="store_true", help="print per-stage timing breakdown to stderr"
     )
 
@@ -410,6 +417,12 @@ def _keep_or_discard_wav(wav_path: Path, extracted: bool) -> None:
         wav_path.unlink(missing_ok=True)
 
 
+def _video_vocabulary(args: argparse.Namespace, cfg: Config) -> str:
+    """The vocabulary prompt for this run: the flag wins, then the config."""
+    use = cfg.local_whisper.use_vocabulary if args.vocabulary is None else args.vocabulary
+    return cfg.vocabulary_prompt if use else ""
+
+
 def _run_video(args: argparse.Namespace) -> int:
     video: Path = args.path.expanduser()
     if not video.is_file():
@@ -444,7 +457,7 @@ def _run_video(args: argparse.Namespace) -> int:
             wav_path=wav_path,
             config=cfg.local_whisper,
             language=language,
-            vocabulary_prompt=cfg.vocabulary_prompt,
+            vocabulary_prompt=_video_vocabulary(args, cfg),
             source=video.name,
         )
         t2 = time.monotonic()

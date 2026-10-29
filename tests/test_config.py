@@ -272,3 +272,25 @@ def test_config_local_whisper_rejects_non_string_values(tmp_path: Path) -> None:
 
 def test_config_constructed_without_local_whisper_gets_defaults() -> None:
     assert _minimal_config().local_whisper.binary == "whisper-cli"
+
+
+def test_config_local_whisper_uses_vocabulary_by_default(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(_BASE_TOML)
+
+    assert load_config(cfg_path).local_whisper.use_vocabulary is True
+
+
+def test_config_local_whisper_vocabulary_can_be_disabled(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(_BASE_TOML + "[local_whisper]\nuse_vocabulary = false\n")
+
+    assert load_config(cfg_path).local_whisper.use_vocabulary is False
+
+
+def test_config_local_whisper_use_vocabulary_must_be_bool(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(_BASE_TOML + '[local_whisper]\nuse_vocabulary = "no"\n')
+
+    with pytest.raises(ConfigError, match=r"local_whisper\.use_vocabulary"):
+        load_config(cfg_path)

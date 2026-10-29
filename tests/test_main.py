@@ -419,3 +419,47 @@ def test_video_new_file_uses_umask_permissions(video_env) -> None:
         os.umask(old)
 
     assert stat.S_IMODE((video.parent / "clip.transcript.json").stat().st_mode) == 0o644
+
+
+def _with_local_whisper(main_mod, use_vocabulary: bool) -> None:
+    import dataclasses
+
+    cfg = main_mod.load_config.return_value
+    main_mod.load_config.return_value = dataclasses.replace(
+        cfg,
+        local_whisper=dataclasses.replace(cfg.local_whisper, use_vocabulary=use_vocabulary),
+    )
+
+
+def test_video_sends_vocabulary_by_default(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+
+    main_mod.main(argv=["video", str(video)])
+
+    assert transcribe.call_args.kwargs["vocabulary_prompt"] == "foo"
+
+
+def test_video_no_vocabulary_flag_sends_empty_prompt(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+
+    main_mod.main(argv=["video", str(video), "--no-vocabulary"])
+
+    assert transcribe.call_args.kwargs["vocabulary_prompt"] == ""
+
+
+def test_video_respects_config_use_vocabulary_false(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+    _with_local_whisper(main_mod, use_vocabulary=False)
+
+    main_mod.main(argv=["video", str(video)])
+
+    assert transcribe.call_args.kwargs["vocabulary_prompt"] == ""
+
+
+def test_video_vocabulary_flag_overrides_config_false(video_env) -> None:
+    main_mod, video, _extract, transcribe = video_env
+    _with_local_whisper(main_mod, use_vocabulary=False)
+
+    main_mod.main(argv=["video", str(video), "--vocabulary"])
+
+    assert transcribe.call_args.kwargs["vocabulary_prompt"] == "foo"
