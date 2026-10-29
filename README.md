@@ -195,8 +195,8 @@ Output (`<name>.transcript.json`, times in seconds):
       "start": 0.0, "end": 10.6,
       "text": "And so my fellow Americans, ask not ...",
       "words": [
-        {"start": 0.32, "end": 0.4, "text": "And", "probability": 0.675},
-        {"start": 1.75, "end": 2.11, "text": "Americans,", "probability": 0.904}
+        {"start": 0.32, "end": 0.4, "text": "And", "probability": 0.675, "approx": false},
+        {"start": 1.75, "end": 2.11, "text": "Americans,", "probability": 0.904, "approx": false}
       ]
     }
   ]
@@ -229,7 +229,8 @@ Known limits:
   moves a word's timing, so pauses stay visible. But around silence whisper can
   misplace words: with 3 s of leading silence, the first words were stamped
   *inside* the silence, and after long gaps several words can collapse onto the
-  same instant. Don't cut on word boundaries blindly; leave a margin.
+  same instant. Those zero-length words are marked `"approx": true`; don't cut
+  on them, and leave a margin around word boundaries in general.
 - **Word splitting assumes spaces between words.** For Japanese, Chinese or
   Thai, a whole segment comes out as one "word".
 - **Only the first audio track is used.** Multi-track recordings (e.g. mic on

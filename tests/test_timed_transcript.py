@@ -24,8 +24,20 @@ def test_to_json_dict_shape() -> None:
                 "end": 1.235,
                 "text": "And so",
                 "words": [
-                    {"start": 0.32, "end": 0.4, "text": "And", "probability": 0.675},
-                    {"start": 0.4, "end": 1.235, "text": "so", "probability": 0.99},
+                    {
+                        "start": 0.32,
+                        "end": 0.4,
+                        "text": "And",
+                        "probability": 0.675,
+                        "approx": False,
+                    },
+                    {
+                        "start": 0.4,
+                        "end": 1.235,
+                        "text": "so",
+                        "probability": 0.99,
+                        "approx": False,
+                    },
                 ],
             }
         ],
@@ -57,3 +69,20 @@ def test_to_srt_hours() -> None:
 
 def test_to_srt_empty_transcript_is_empty_string() -> None:
     assert to_srt(_transcript()) == ""
+
+
+def test_zero_length_word_is_marked_approx() -> None:
+    # Whisper sometimes collapses words onto one instant (seen at 30 s window
+    # edges on real recordings); their timing must not be trusted for cuts.
+    collapsed = Word(start=65.0, end=65.0, text="exactly", probability=0.9)
+    normal = Word(start=64.0, end=64.5, text="basically", probability=0.9)
+
+    assert collapsed.approx is True
+    assert normal.approx is False
+
+
+def test_json_marks_collapsed_word_approx() -> None:
+    word = Word(start=2.0, end=2.0, text="hey", probability=0.9)
+    transcript = _transcript(Segment(start=0.0, end=3.0, text="hey", words=(word,)))
+
+    assert to_json_dict(transcript)["segments"][0]["words"][0]["approx"] is True

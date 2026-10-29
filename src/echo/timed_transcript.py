@@ -19,6 +19,15 @@ class Word:
     text: str
     probability: float
 
+    @property
+    def approx(self) -> bool:
+        """True when whisper gave the word no duration, so its timing is unreliable.
+
+        Seen on real recordings at whisper's 30 s window edges, where several
+        words collapse onto the same instant. Editors shouldn't cut on these.
+        """
+        return self.end <= self.start
+
 
 @dataclass(frozen=True)
 class Segment:
@@ -46,6 +55,7 @@ def _word_dict(word: Word) -> dict[str, Any]:
         "end": _round(word.end),
         "text": word.text,
         "probability": _round(word.probability),
+        "approx": word.approx,
     }
 
 
