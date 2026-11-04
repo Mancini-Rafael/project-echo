@@ -7,10 +7,20 @@ from any app, any window, any text field.
 ## What it is
 
 `project-echo` is a small, single-process Python CLI named `ec`. It captures
-audio from your microphone, sends it to OpenAI's `gpt-4o-transcribe`, and
-copies the result to your clipboard via `pbcopy`. Two ways to drive it: a
-one-shot terminal command, or a long-running daemon that listens for a global
-keyboard chord.
+audio from your microphone, transcribes it, and copies the result to your
+clipboard via `pbcopy`. Two ways to drive it: a one-shot terminal command, or a
+long-running daemon that listens for a global keyboard chord.
+
+Transcription runs on one of two backends, picked per run with `--backend`:
+
+- **OpenAI** (default): `gpt-4o-transcribe`. Best accuracy, needs an API key,
+  audio leaves your machine.
+- **Local** (`--backend local`): a [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+  model on your Mac. Free, offline, no API key, nothing uploaded. See
+  [Local models](#local-models-whispercpp).
+
+A third command, `ec video`, turns a video's audio into a transcript with
+word-level timestamps (always local), for AI video-editing workflows.
 
 The design is deliberately small and replaceable:
 
@@ -24,9 +34,9 @@ The design is deliberately small and replaceable:
 - **No surprises.** API key only via environment variable. No telemetry. No
   history. Failure modes are explicit and the clipboard is never overwritten
   on error.
-- **Replaceable backend.** Modules are split by responsibility so the
-  transcription backend (currently OpenAI) can be swapped for a local Whisper
-  model without rewriting the rest of the tool. That's the next milestone.
+- **Replaceable backend.** Modules are split by responsibility, and both
+  backends share one call signature, so the one-shot command and the daemon
+  run on either without knowing which.
 
 The binary is named `ec` because `echo` is a reserved shell builtin.
 
@@ -34,7 +44,9 @@ The binary is named `ec` because `echo` is a reserved shell builtin.
 
 ### Setup
 
-Requirements: macOS, Python 3.12+, an OpenAI API key.
+Requirements: macOS, Python 3.12+, and either an OpenAI API key or a local
+whisper.cpp model ([Local models](#local-models-whispercpp)). You only need the
+key if you use the OpenAI backend.
 
 ```sh
 # system deps
@@ -146,21 +158,17 @@ To restart cleanly: `uv run ec stop && uv run ec listen`.
 
 #### Local dictation (no API key)
 
-`--backend local` runs dictation through the same local whisper.cpp setup as
-`ec video` (see [Usage (video → timestamped transcript, local)](#usage-video--timestamped-transcript-local)
-for installing `whisper-cpp` and a model). No API key is needed and nothing
-leaves your machine.
+Once a local model is set up ([Local models](#local-models-whispercpp)), add
+`--backend local` to either command. Nothing leaves your machine.
 
 ```sh
-uv run ec --backend local
-uv run ec listen --backend local --no-vocabulary
+uv run ec --backend local                                  # one-off
+uv run ec listen --backend local                           # hotkey daemon
+uv run ec listen --backend local --no-vocabulary --auto-paste
 ```
 
-Trade-offs versus OpenAI: each recording loads the model from disk, so expect
-an extra second or more per press (a 12 s clip took ~1.3 s with `base.en` on
-CPU; larger models are slower but more accurate), and whisper treats the
-vocabulary as preceding speech rather than instructions, so try
-`--no-vocabulary` if names come out wrong.
+Restart a running daemon (`uv run ec stop`) to switch backends; the backend is
+chosen when `ec listen` starts.
 
 #### Auto-paste
 
@@ -186,13 +194,11 @@ paste simulation — no additional setup needed.
 with segment- and word-level timestamps, meant as input for an AI video-editing
 flow. No API key, no upload, no file-size limit.
 
-One-time setup:
+One-time setup: a local model ([Local models](#local-models-whispercpp)) plus
+FFmpeg for audio extraction:
 
 ```sh
-brew install ffmpeg whisper-cpp
-mkdir -p ~/.local/share/echo/models
-curl -L -o ~/.local/share/echo/models/ggml-large-v3-turbo.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
+brew install ffmpeg
 ```
 
 Run it:
@@ -230,13 +236,8 @@ Output (`<name>.transcript.json`, times in seconds):
 | `--vocabulary` / `--no-vocabulary` | Send (or skip) your vocabulary prompt for this run; overrides `local_whisper.use_vocabulary` |
 | `--verbose` | Print per-stage timings to stderr |
 
-Configure the binary, model path, and default language under
-`[local_whisper]` in your config. The `[transcription] vocabulary_prompt` list
-is passed to whisper as a prompt to bias spelling of jargon and names. Whisper
-reads that prompt as speech that came before the audio, so a long list can
-backfire (on one test recording it caused misheard words and a repeated
-phrase). Turn it off with `use_vocabulary = false` under `[local_whisper]`, or
-per run with `--no-vocabulary`; dictation keeps using it either way.
+`ec video` uses the `[local_whisper]` settings described in
+[Local models](#local-models-whispercpp), including `use_vocabulary`.
 
 Behavior worth knowing:
 
@@ -265,6 +266,76 @@ Known limits:
 - **`auto` language detection** can misfire on very short clips; pin
   `--language` when you know it.
 
+### Local models (whisper.cpp)
+
+The local backend (`ec --backend local`, `ec listen --backend local`, and
+`ec video`) runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) on your
+Mac. On Apple Silicon it uses the GPU (Metal) automatically. You bring the
+model file; echo never downloads anything on its own.
+
+**1. Install whisper.cpp**
+
+```sh
+brew install whisper-cpp
+which whisper-cli        # → /opt/homebrew/bin/whisper-cli
+```
+
+**2. Download a model.** Models are single `ggml-*.bin` files from
+[huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main).
+Pick one by trading speed for accuracy:
+
+| Model file | Size | Notes |
+|------------|------|-------|
+| `ggml-tiny.en.bin` | 78 MB | Fastest; English only; noticeably less accurate |
+| `ggml-base.en.bin` | 148 MB | Fast; English only; fine for quick dictation |
+| `ggml-small.bin` | 488 MB | Multilingual; good middle ground |
+| `ggml-large-v3-turbo-q5_0.bin` | 574 MB | Quantized turbo; near large-model quality at a third of the size |
+| `ggml-large-v3-turbo.bin` | 1.6 GB | **Default.** Multilingual, best speed/accuracy balance |
+| `ggml-large-v3.bin` | 3.1 GB | Most accurate; slowest |
+
+Models ending in `.en` only understand English. Use a multilingual one if you
+speak Portuguese, Spanish, etc.
+
+```sh
+mkdir -p ~/.local/share/echo/models
+curl -L -o ~/.local/share/echo/models/ggml-large-v3-turbo.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
+```
+
+**3. Point echo at it (only if you didn't use the default).** With no
+`[local_whisper]` section, echo looks for
+`~/.local/share/echo/models/ggml-large-v3-turbo.bin`. To use any other model,
+including a fine-tuned one you converted to ggml yourself, add this to
+`config/config.toml`:
+
+```toml
+[local_whisper]
+binary = "whisper-cli"                                    # or a full path
+model_path = "~/.local/share/echo/models/ggml-small.bin"  # any ggml .bin
+language = "auto"         # or "en", "pt", ... ; `auto` can misdetect short clips
+use_vocabulary = true     # `ec video` only; see the note below
+```
+
+**4. Check it works**, outside echo first if anything looks off:
+
+```sh
+whisper-cli -m ~/.local/share/echo/models/ggml-large-v3-turbo.bin -f some.wav
+uv run ec --backend local
+```
+
+Trade-offs versus the OpenAI backend:
+
+- **Latency.** Each dictation loads the model from disk, so expect an extra
+  second or more per press (larger models take longer). The daemon doesn't keep
+  the model loaded yet.
+- **Accuracy.** OpenAI's `gpt-4o-transcribe` is generally stronger, especially
+  on names and jargon. Smaller local models trade accuracy for speed.
+- **Vocabulary prompt.** Whisper reads `vocabulary_prompt` as speech that came
+  *before* the audio, not as instructions, so a long list can backfire: on one
+  test recording it caused misheard words and a repeated phrase. If names come
+  out wrong, try `--no-vocabulary` (dictation and `ec video`) or
+  `use_vocabulary = false` under `[local_whisper]` (for `ec video`).
+
 ## How does it work?
 
 End-to-end pipeline for a single recording:
@@ -283,6 +354,7 @@ buffer is flushed to a temp WAV at /tmp/echo-<ts>.wav
         │
         ▼
 WAV is POSTed to the OpenAI audio API with the configured vocabulary prompt
+(or, with --backend local, run through whisper-cli on this machine)
         │
         ▼
 text comes back → pbcopy → clipboard
@@ -345,6 +417,10 @@ A few details worth knowing:
 | `daemon already running (PID ...)` | A previous daemon is still alive | Run `uv run ec stop` first, or pass `--force` |
 | `--auto-paste` doesn't paste | Accessibility permission not granted, or no focused app | Check Accessibility permission; the transcription is still on your clipboard |
 | Sound cues don't play | Sound file path in config is wrong or missing | Check `[hotkey.sounds]` paths in `config/config.toml`; set to `""` to disable |
+| `whisper-cli not found` | whisper.cpp isn't installed, or the binary has another name | `brew install whisper-cpp`; older formulas name it `whisper-cpp`, so set `binary = "whisper-cpp"` under `[local_whisper]` |
+| `whisper model not found at ...` | No model at the configured path | Download one ([Local models](#local-models-whispercpp)) or fix `model_path` |
+| Local transcripts mishear names or repeat phrases | Vocabulary prompt biasing whisper | Run with `--no-vocabulary` |
+| Local dictation is slow | Large model reloaded on every press | Use a smaller or quantized model (e.g. `ggml-large-v3-turbo-q5_0.bin`) |
 
 ## Project Layout
 
@@ -354,6 +430,7 @@ project-echo/
 ├── config/                 # gitignored except config.example.toml
 ├── src/echo/
 │   ├── __init__.py
+│   ├── backends.py         # OpenAI / local dictation backends (--backend)
 │   ├── __main__.py         # entry point, subcommand dispatch, PID file
 │   ├── clipboard.py        # pbcopy + osascript paste wrappers
 │   ├── config.py           # TOML loading + HotkeyConfig
@@ -444,7 +521,7 @@ A few notes if you're sending a pull request:
 - [ ] Homebrew tap / formula for native `ec` binary installation
 - [ ] `ec doctor` command to diagnose setup (deps, permissions, API key, config)
 
-### Local LLM — later
+### Local Whisper — in progress
 
 - [x] Pluggable transcription backend behind a thin interface
 - [x] Local Whisper (`whisper.cpp`) for timestamped video transcription (`ec video`)
